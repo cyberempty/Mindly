@@ -178,11 +178,11 @@ const svg=$('#svg');
 const FONTS=[['Segoe UI, Arial, sans-serif','Sans'],['Georgia, serif','Serif'],['Consolas, monospace','Mono'],['Comic Sans MS, cursive','Script']];
 const SH=['rect','rounded','circle','ellipse','pill'];
 const blank=()=>({nodes:[],links:[],settings:{grid:true,snap:false,layout:'tidy'},view:{x:400,y:300,z:1}});
-const mk=o=>({id:uid(),x:0,y:0,w:140,h:56,text:'',fill:'#ffffff',color:'#1f2937',font:FONTS[0][0],size:16,bold:false,italic:false,align:'center',stroke:'#6366f1',sw:2,radius:6,opacity:1,shape:'rounded',...o});
-const mkl=o=>({id:uid(),from:'',to:'',color:'#64748b',width:2,type:'curve',dashed:false,start:'none',end:'none',...o});
+const mk=o=>({id:uid(),x:0,y:0,w:140,h:56,text:'',fill:'#ffffff',color:'#1f2937',font:FONTS[0][0],size:16,bold:false,italic:false,align:'center',stroke:'#374151',sw:2,radius:6,opacity:1,shape:'rounded',...o});
+const mkl=o=>({id:uid(),from:'',to:'',color:'#4b5563',width:2,type:'curve',dashed:false,start:'none',end:'none',...o});
 const norm=p=>{const b=blank();return{nodes:(p.nodes||[]).map(mk),links:(p.links||[]).map(mkl),settings:{...b.settings,...p.settings,layout:'tidy'},view:{...b.view,...p.view}}};
-const rootNode=()=>mk({x:-85,y:-35,w:170,h:70,text:t('central'),size:20,bold:true,fill:'#6366f1',color:'#ffffff',stroke:'#4f46e5'});
-let cur=null,M=blank(),sel={n:new Set(),l:null},undoS=[],redoS=[],lk='',lt=0,dirty=false,saving=false,st='none',saveT,tool='select',linkFrom=null,clip=null,pc=0,space=false,editing=null,drag=null,band=null,conn=null,dropT=null,lastClk={id:'',t:0},mouse={x:0,y:0},onMC=null;
+const rootNode=()=>mk({isTitle:true,x:-85,y:-35,w:170,h:70,text:t('central'),size:20,bold:true,fill:'#1f2937',color:'#ffffff',stroke:'#111827'});
+let renaming=false,nameT=null,cur=null,M=blank(),sel={n:new Set(),l:null},undoS=[],redoS=[],lk='',lt=0,dirty=false,saving=false,st='none',saveT,tool='select',linkFrom=null,clip=null,pc=0,space=false,editing=null,drag=null,band=null,conn=null,dropT=null,lastClk={id:'',t:0},mouse={x:0,y:0},onMC=null;
 const byId=id=>M.nodes.find(n=>n.id===id);
 const sn=v=>M.settings.snap?Math.round(v/20)*20:v;
 const SR=()=>svg.getBoundingClientRect();
@@ -214,13 +214,11 @@ function nodeSVG(n,hide){const cx=n.x+n.w/2,cy=n.y+n.h/2,a=`fill="${esc(n.fill)}
  return `<g opacity="${n.opacity}">${s}</g>`}
 const hw=n=>n.shape==='circle'?Math.min(n.w,n.h)/2:n.w/2,hh=n=>n.shape==='circle'?Math.min(n.w,n.h)/2:n.h/2,ang=(a,b)=>Math.atan2(b[1]-a[1],b[0]-a[0]);
 function edge(n,tx,ty){const cx=n.x+n.w/2,cy=n.y+n.h/2,dx=tx-cx,dy=ty-cy;if(!dx&&!dy)return[cx,cy];const a=hw(n),b=hh(n),k=(n.shape==='ellipse'||n.shape==='circle')?1/Math.hypot(dx/a,dy/b):1/Math.max(Math.abs(dx)/a,Math.abs(dy)/b);return[cx+dx*k,cy+dy*k]}
-function geo(l){const a=byId(l.from),b=byId(l.to);if(!a||!b)return null;const ac=[a.x+a.w/2,a.y+a.h/2],bc=[b.x+b.w/2,b.y+b.h/2];let p,q,d,a1,a2;
- if(l.type==='ortho'){const h=Math.abs(bc[0]-ac[0])>=Math.abs(bc[1]-ac[1]);
-  if(h){const s=bc[0]>=ac[0]?1:-1;p=[ac[0]+s*hw(a),ac[1]];q=[bc[0]-s*hw(b),bc[1]];const m=(p[0]+q[0])/2;d=`M${p}L${m},${p[1]}L${m},${q[1]}L${q}`;a1=s>0?Math.PI:0;a2=s>0?0:Math.PI}
-  else{const s=bc[1]>=ac[1]?1:-1;p=[ac[0],ac[1]+s*hh(a)];q=[bc[0],bc[1]-s*hh(b)];const m=(p[1]+q[1])/2;d=`M${p}L${p[0]},${m}L${q[0]},${m}L${q}`;a1=s>0?-Math.PI/2:Math.PI/2;a2=s>0?Math.PI/2:-Math.PI/2}}
- else{p=edge(a,bc[0],bc[1]);q=edge(b,ac[0],ac[1]);
-  if(l.type==='curve'){const h=Math.abs(q[0]-p[0])>=Math.abs(q[1]-p[1]),c1=h?[p[0]+(q[0]-p[0])/2,p[1]]:[p[0],p[1]+(q[1]-p[1])/2],c2=h?[q[0]-(q[0]-p[0])/2,q[1]]:[q[0],q[1]-(q[1]-p[1])/2];d=`M${p}C${c1} ${c2} ${q}`;a1=ang(c1,p);a2=ang(c2,q)}
-  else{d=`M${p}L${q}`;a1=ang(q,p);a2=ang(p,q)}}
+function geo(l){const a=byId(l.from),b=byId(l.to);if(!a||!b)return null;const ac=[a.x+a.w/2,a.y+a.h/2],bc=[b.x+b.w/2,b.y+b.h/2],h=Math.abs(bc[0]-ac[0])>=Math.abs(bc[1]-ac[1]),s=(h?bc[0]>=ac[0]:bc[1]>=ac[1])?1:-1;let p,q,d,a1,a2;
+ if(h){p=[ac[0]+s*hw(a),ac[1]];q=[bc[0]-s*hw(b),bc[1]]}else{p=[ac[0],ac[1]+s*hh(a)];q=[bc[0],bc[1]-s*hh(b)]}
+ if(l.type==='ortho'){if(h){const m=(p[0]+q[0])/2;d=`M${p}L${m},${p[1]}L${m},${q[1]}L${q}`;a1=s>0?Math.PI:0;a2=s>0?0:Math.PI}else{const m=(p[1]+q[1])/2;d=`M${p}L${p[0]},${m}L${q[0]},${m}L${q}`;a1=s>0?-Math.PI/2:Math.PI/2;a2=s>0?Math.PI/2:-Math.PI/2}}
+ else if(l.type==='curve'){const c1=h?[p[0]+(q[0]-p[0])/2,p[1]]:[p[0],p[1]+(q[1]-p[1])/2],c2=h?[q[0]-(q[0]-p[0])/2,q[1]]:[q[0],q[1]-(q[1]-p[1])/2];d=`M${p}C${c1} ${c2} ${q}`;a1=ang(c1,p);a2=ang(c2,q)}
+ else{d=`M${p}L${q}`;a1=ang(q,p);a2=ang(p,q)}
  return{d,p,q,a1,a2}}
 function cap(c,pt,a,col,w){const s=9+w*2;if(c==='arrow'){const ca=Math.cos(a),sa=Math.sin(a),bx=pt[0]-ca*s,by=pt[1]-sa*s;return `<path d="M${pt}L${bx-sa*s*.45},${by+ca*s*.45}L${bx+sa*s*.45},${by-ca*s*.45}Z" fill="${col}"/>`}if(c==='dot')return `<circle cx="${pt[0]}" cy="${pt[1]}" r="${3+w}" fill="${col}"/>`;return''}
 function linkSVG(l,g,s,ex){const c=esc(l.color),w=l.width;let h='';if(!ex)h+=`<path d="${g.d}" fill="none" stroke="transparent" stroke-width="${Math.max(14,w+8)}" style="pointer-events:stroke"/>`;if(s)h+=`<path d="${g.d}" fill="none" stroke="var(--accent)" stroke-opacity=".35" stroke-width="${w+8}"/>`;h+=`<path d="${g.d}" fill="none" stroke="${c}" stroke-width="${w}"${l.dashed?` stroke-dasharray="${w*3} ${w*2}"`:''} stroke-linejoin="round"/>`+cap(l.start,g.p,g.a1,c,w)+cap(l.end,g.q,g.a2,c,w);return ex?h:`<g data-l="${l.id}" class="lnk">${h}</g>`}
@@ -228,7 +226,7 @@ function overlay(){let h='';const z=M.view.z;
  for(const id of sel.n){const n=byId(id);if(n)h+=`<rect class="sel" x="${n.x-5}" y="${n.y-5}" width="${n.w+10}" height="${n.h+10}" rx="6" fill="none" stroke-width="${1.5/z}" stroke-dasharray="${5/z}"/>`}
  if(sel.n.size===1&&!editing){const n=byId([...sel.n][0]);if(n)for(const[k,x,y]of[['nw',n.x,n.y],['ne',n.x+n.w,n.y],['sw',n.x,n.y+n.h],['se',n.x+n.w,n.y+n.h],['n',n.x+n.w/2,n.y],['s',n.x+n.w/2,n.y+n.h],['w',n.x,n.y+n.h/2],['e',n.x+n.w,n.y+n.h/2]]){const s=11/z;h+=`<rect class="hdl" data-h="${k}" x="${x-s/2}" y="${y-s/2}" width="${s}" height="${s}" stroke-width="${1/z}"/>`}}
  if(sel.n.size===1&&!editing&&!conn){const n=byId([...sel.n][0]);if(n)for(const[sx,g]of[[n.x+n.w+22/z,'→'],[n.x-22/z,'←']])h+=`<circle class="cn" data-c="1" cx="${sx}" cy="${n.y+n.h/2}" r="${11/z}" stroke="#fff" stroke-width="${1.5/z}"/><text x="${sx}" y="${n.y+n.h/2}" font-size="${14/z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`}
- if(conn){const n=byId(conn.id);if(n){const p=edge(n,conn.x,conn.y),e=[conn.x,conn.y];h+=`<path class="cnl" d="M${p}L${e}" stroke-width="${2/z}" stroke-dasharray="${6/z}"/>`+cap('arrow',e,ang(p,e),'#6366f1',2/z);const o=conn.hover&&byId(conn.hover);if(o)h+=`<rect class="src" x="${o.x-6}" y="${o.y-6}" width="${o.w+12}" height="${o.h+12}" rx="8" stroke-width="${2/z}"/>`}}
+ if(conn){const n=byId(conn.id);if(n){const p=edge(n,conn.x,conn.y),e=[conn.x,conn.y];h+=`<path class="cnl" d="M${p}L${e}" stroke-width="${2/z}" stroke-dasharray="${6/z}"/>`+cap('arrow',e,ang(p,e),'#111827',2/z);const o=conn.hover&&byId(conn.hover);if(o)h+=`<rect class="src" x="${o.x-6}" y="${o.y-6}" width="${o.w+12}" height="${o.h+12}" rx="8" stroke-width="${2/z}"/>`}}
  const dtn=dropT&&byId(dropT);if(dtn)h+=`<rect class="src" x="${dtn.x-6}" y="${dtn.y-6}" width="${dtn.w+12}" height="${dtn.h+12}" rx="8" stroke-width="${2.5/z}"/>`;
  const f=linkFrom&&byId(linkFrom);if(f)h+=`<rect class="src" x="${f.x-6}" y="${f.y-6}" width="${f.w+12}" height="${f.h+12}" rx="8" stroke-width="${2/z}"/>`;
  if(band)h+=`<rect class="band" x="${Math.min(band.x0,band.x1)}" y="${Math.min(band.y0,band.y1)}" width="${Math.abs(band.x1-band.x0)}" height="${Math.abs(band.y1-band.y0)}" stroke-width="${1/z}"/>`;
@@ -272,7 +270,7 @@ function markDirty(){if(!cur)return;if(M.settings.layout==='tidy'){layoutAll();r
 function viewDirty(){if(!cur)return;dirty=true;clearTimeout(saveT);saveT=setTimeout(()=>save(true),1500)}
 const proj=()=>({version:1,nodes:M.nodes,links:M.links,settings:M.settings,view:M.view});
 async function api(m,u,b){const r=await fetch('/api'+u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Error(j.error||'error');return j}
-async function save(auto){if(!cur)return true;clearTimeout(saveT);if(!dirty&&auto)return true;if(saving)return false;saving=true;setStat('saving');dirty=false;let ok=true;
+async function save(auto){if(!cur)return true;clearTimeout(saveT);if(!dirty&&auto)return true;if(saving||renaming)return false;saving=true;setStat('saving');dirty=false;let ok=true;
  try{const r=await api('PUT','/projects/'+encodeURIComponent(cur.id),{project:proj()});cur.modified=r.modified;setStat(dirty?'unsaved':'saved');if(!auto)toast(t('t_saved'))}catch(e){dirty=true;ok=false;setStat('error');toast(t('t_saveErr'),'err')}
  saving=false;if(dirty&&ok)saveT=setTimeout(()=>save(true),500);return ok}
 addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
@@ -285,6 +283,9 @@ function resetCur(){cur=null;M=blank();undoS=[];redoS=[];dirty=false;clearTimeou
 async function openProject(id){if(cur&&dirty&&!(await save(false)))return;try{const r=await api('GET','/projects/'+encodeURIComponent(id));cur={id:r.id,name:r.metadata.name,created:r.metadata.created,modified:r.metadata.modified};M=norm(r.project);layoutAll();if(!r.project.view){const s=SR();M.view={x:s.width/2,y:s.height/2,z:1}}undoS=[];redoS=[];sel={n:new Set(),l:null};dirty=false;tool='select';linkFrom=null;setRecs([id,...recs().filter(x=>x!==id)]);localStorage.mLast=id;setStat('saved');updTitle();hint();render();buildPanel()}catch(e){err(e,'t_loadErr')}}
 const newMap=()=>({version:1,nodes:[rootNode()],links:[],settings:{grid:true,snap:false,layout:'tidy'}});
 async function newProject(){const n=await ask(t('d_new'),t('d_name'),t('untitled'));if(n==null)return;try{const r=await api('POST','/projects',{name:n,project:{...newMap(),view:{x:SR().width/2,y:SR().height/2,z:1}}});toast(t('t_created'));await openProject(r.id)}catch(e){err(e,'t_saveErr')}}
+async function syncName(txt){const v=String(txt||'').replace(/\s+/g,' ').trim().slice(0,60);if(!v||!cur||v===cur.name||renaming)return;await save(true);if(!cur||saving)return;renaming=true;
+ try{const old=cur.id,r=await api('POST','/projects/'+encodeURIComponent(old)+'/rename',{name:v});cur.id=r.id;cur.name=r.metadata.name;localStorage.mLast=r.id;setRecs(recs().map(x=>x===old?r.id:x));updTitle()}catch(e){}
+ renaming=false;if(dirty){clearTimeout(saveT);saveT=setTimeout(()=>save(true),400)}}
 async function renameProject(id,name){const v=await ask(t('d_rename'),t('d_name'),name);if(v==null||v===name)return;if(cur&&cur.id===id)await save(false);try{const r=await api('POST','/projects/'+encodeURIComponent(id)+'/rename',{name:v});if(cur&&cur.id===id){cur.id=r.id;cur.name=r.metadata.name;updTitle();localStorage.mLast=r.id}setRecs(recs().map(x=>x===id?r.id:x));toast(t('t_renamed'))}catch(e){err(e,'t_saveErr')}}
 async function dupProject(id,name){const v=await ask(t('d_dup'),t('d_name'),t('copyOf',name));if(v==null)return null;try{const r=await api('POST','/projects/'+encodeURIComponent(id)+'/duplicate',{name:v});toast(t('t_dupd'));return r.id}catch(e){err(e,'t_saveErr');return null}}
 async function deleteProject(id,name){if(!(await confirmDlg(t('d_delTitle'),t('d_delMsg',name))))return;try{await api('DELETE','/projects/'+encodeURIComponent(id));setRecs(recs().filter(x=>x!==id));if(cur&&cur.id===id)resetCur();toast(t('t_deleted'))}catch(e){err(e,'t_saveErr')}}
@@ -310,7 +311,7 @@ function child(left){if(!need())return;const n=oneSel();if(!n)return toast(t('t_
 function sibling(){if(!need())return;const n=oneSel();if(!n)return toast(t('t_nosel'),'err');const pl=M.links.find(l=>l.to===n.id);if(pl)spawn(n,n.x,M.settings.layout==='tidy'?n.y+1:n.y+n.h+24,pl.from,pl,n.side);else child()}
 function del(){if(!cur)return;if(sel.l){snapshot();M.links=M.links.filter(l=>l.id!==sel.l);setSel([]);markDirty();return}if(!sel.n.size)return;snapshot();M.nodes=M.nodes.filter(n=>!sel.n.has(n.id));M.links=M.links.filter(l=>byId(l.from)&&byId(l.to));setSel([]);markDirty()}
 const pick=()=>({nodes:M.nodes.filter(n=>sel.n.has(n.id)),links:M.links.filter(l=>sel.n.has(l.from)&&sel.n.has(l.to))});
-function clone(src,off){const m={};const nodes=src.nodes.map(n=>{const c={...n,id:uid(),x:n.x+off,y:n.y+off};m[n.id]=c.id;return c});return{nodes,links:src.links.map(l=>({...l,id:uid(),from:m[l.from],to:m[l.to]}))}}
+function clone(src,off){const m={};const nodes=src.nodes.map(n=>{const c={...n,id:uid(),x:n.x+off,y:n.y+off,isTitle:false};m[n.id]=c.id;return c});return{nodes,links:src.links.map(l=>({...l,id:uid(),from:m[l.from],to:m[l.to]}))}}
 function addClone(c){M.nodes.push(...c.nodes);M.links.push(...c.links);setSel(c.nodes.map(n=>n.id));markDirty()}
 function copy(){if(!sel.n.size)return;clip=JSON.parse(JSON.stringify(pick()));pc=0}
 function cut(){if(!sel.n.size)return;copy();del()}
@@ -319,12 +320,13 @@ function dup(){if(!need()||!sel.n.size)return;snapshot();addClone(clone(pick(),3
 function selAll(){if(cur)setSel(M.nodes.map(n=>n.id))}
 function desel(){if(editing)return cancelEdit();hidePop();tool='select';linkFrom=null;hint();setSel([])}
 function startEdit(id){const n=byId(id);if(!n)return;editing=id;if(!sel.n.has(id)){sel={n:new Set([id]),l:null};buildPanel()}const v=M.view,ed=$('#editor');Object.assign(ed.style,{left:n.x*v.z+v.x+'px',top:n.y*v.z+v.y+'px',width:n.w*v.z+'px',height:n.h*v.z+'px',fontFamily:n.font,fontSize:n.size*v.z+'px',fontWeight:n.bold?700:400,fontStyle:n.italic?'italic':'normal',textAlign:n.align,color:n.color,background:n.fill});ed.value=n.text;ed.hidden=false;render();ed.focus();ed.select()}
-function commitEdit(){const id=editing;if(!id)return;editing=null;const ed=$('#editor');ed.hidden=true;const n=byId(id);if(n&&ed.value!==n.text){snapshot();n.text=ed.value;grow(n);markDirty()}render();buildPanel()}
+function commitEdit(){const id=editing;if(!id)return;editing=null;const ed=$('#editor');ed.hidden=true;const n=byId(id);if(n&&ed.value!==n.text){snapshot();n.text=ed.value;grow(n);markDirty();if(n.isTitle)syncName(n.text)}render();buildPanel()}
 function cancelEdit(){editing=null;$('#editor').hidden=true;render()}
 $('#editor').addEventListener('keydown',e=>{const c=combo(e);e.stopPropagation();if(c==='Enter'){e.preventDefault();commitEdit()}else if(c==='Esc'){e.preventDefault();cancelEdit()}else if(c==='Tab'){e.preventDefault();commitEdit();child()}else if(c==='Shift+Tab'){e.preventDefault();commitEdit();child(true)}else if(c==='Ctrl+B'||c==='Ctrl+I'){e.preventDefault();const id=editing,v=$('#editor').value;fmt(c==='Ctrl+B'?'bold':'italic');if(byId(id)){editing=id;const n=byId(id),ed=$('#editor');ed.style.fontWeight=n.bold?700:400;ed.style.fontStyle=n.italic?'italic':'normal';ed.value=v}}else if(c==='Ctrl+Shift+E'){e.preventDefault();fmtCenter()}});
 $('#editor').addEventListener('blur',()=>{if(editing)commitEdit()});
 const LIM={w:[40,3000],h:[24,3000],size:[6,200],sw:[0,30],radius:[0,200],width:[1,30],opacity:[.1,1]};
-function applyProp(p,v){const tg=sel.l?M.links.filter(l=>l.id===sel.l):[...sel.n].map(byId).filter(Boolean);if(!tg.length)return;if(LIM[p])v=Math.min(LIM[p][1],Math.max(LIM[p][0],+v||LIM[p][0]));snapshot('p'+p);for(const o of tg){o[p]=v;if(p==='w'||p==='h')o.manual=true;if(!sel.l&&['text','size','font','bold','italic','w','shape'].includes(p))grow(o)}render();markDirty()}
+function applyProp(p,v){const tg=sel.l?M.links.filter(l=>l.id===sel.l):[...sel.n].map(byId).filter(Boolean);if(!tg.length)return;if(LIM[p])v=Math.min(LIM[p][1],Math.max(LIM[p][0],+v||LIM[p][0]));snapshot('p'+p);if(p==='text'){const ot=tg.find(x=>x.isTitle);if(ot){clearTimeout(nameT);nameT=setTimeout(()=>syncName(ot.text),900)}}
+ for(const o of tg){o[p]=v;if(p==='w'||p==='h')o.manual=true;if(!sel.l&&['text','size','font','bold','italic','w','shape'].includes(p))grow(o)}render();markDirty()}
 function fmt(p){const ns=[...sel.n].map(byId).filter(Boolean);if(!ns.length)return toast(t('t_nosel'),'err');applyProp(p,!ns[0][p]);buildPanel()}
 function fmtCenter(){if(!sel.n.size)return toast(t('t_nosel'),'err');applyProp('align','center');buildPanel()}
 /* ---------- panel ---------- */
@@ -340,7 +342,6 @@ function buildPanel(){const ns=[...sel.n].map(byId).filter(Boolean),l=sel.l&&M.l
 $('#props').addEventListener('input',e=>{const el=e.target,p=el.dataset.p;if(!p)return;applyProp(p,el.type==='checkbox'?el.checked:(el.type==='number'||el.type==='range')?el.valueAsNumber:el.value)});
 $('#props').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.b)fmt(b.dataset.b);else if(b.dataset.a){applyProp('align',b.dataset.a);buildPanel()}});
 /* ---------- floating quick bar ---------- */
-const SW=['#ffffff','#fef08a','#bbf7d0','#bfdbfe','#fbcfe8','#fecaca','#ddd6fe','#6366f1'];
 const lum=c=>{const m=/^#?([0-9a-f]{6})$/i.exec(c);if(!m)return 255;const v=parseInt(m[1],16);return .299*(v>>16)+.587*((v>>8)&255)+.114*(v&255)};
 function buildFbar(){const f=$('#fbar'),ns=[...sel.n].map(byId).filter(Boolean),l=sel.l&&M.links.find(x=>x.id===sel.l);let h='';
  if(l)h=`<input type="color" data-p="color" value="${esc(l.color)}" title="${t('p_color')}"><button data-lk="end" title="${t('p_end')}">→</button><button data-lk="dashed" title="${t('p_dashed')}">┅</button>`;
@@ -365,7 +366,7 @@ const fname=ext=>(cur.name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')||'mindly')+'.'+
 function dl(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 function svgStr(){const b=bbox(),p=40,bg='#ffffff',W=b.w+p*2,H=b.h+p*2;let s=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="${b.x-p} ${b.y-p} ${W} ${H}"><rect x="${b.x-p}" y="${b.y-p}" width="${W}" height="${H}" fill="${bg}"/>`;for(const l of M.links){const g=geo(l);if(g)s+=linkSVG(l,g,false,true)}for(const n of M.nodes)s+=nodeSVG(n,false);return s+'</svg>'}
 function preview(){if(!need())return;if(!M.nodes.length)return toast(t('t_empty'),'err');const box=document.createElement('div');box.style.cssText='background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;overflow:auto;max-height:62vh;text-align:center';box.innerHTML=svgStr().replace('<svg ','<svg style="max-width:100%;height:auto;display:inline-block" ');
- modal(t('a_preview'),box,[{l:t('b_close')},{l:t('a_exportJson'),f:()=>{exportJson();return false}},{l:t('a_exportSvg'),f:()=>{exportSvg();return false}},{l:t('a_exportPdf'),f:()=>{exportPdf();return false}},{l:t('a_exportPng'),c:'pri',f:()=>{exportPng();return false}}],true)}
+ modal(t('a_preview'),box,[{l:t('b_close')},{l:t('a_exportJson'),f:()=>{exportJson();return false}},{l:t('a_exportSvg'),f:()=>{exportSvg();return false}},{l:t('a_exportPng'),f:()=>{exportPng();return false}},{l:t('a_exportPdf'),c:'pri',f:()=>{exportPdf();return false}}],true)}
 function pdfBlob(jpg,pxW,pxH,pw,ph){const enc=new TextEncoder(),parts=[],off=[];let len=0;const add=d=>{const u=typeof d==='string'?enc.encode(d):d;parts.push(u);len+=u.length};
  const obj=(n,body,stream)=>{off[n]=len;add(n+' 0 obj\n'+body+'\n');if(stream!==undefined){add('stream\n');add(stream);add('\nendstream\n')}add('endobj\n')};
  add('%PDF-1.4\n');
@@ -416,7 +417,7 @@ function layoutAll(){const T=new Map(),Hm=new Map(),seen=new Set();
   for(const dir of['r','l']){const g=k.filter(c=>c.side===dir),H=tot(g);let y=r.y+r.h/2-H/2;for(const c of g){c.x=dir==='r'?r.x+r.w+GX:r.x-GX-c.w;place(c,dir,y);y+=hg(c)+GY}}}
 }
 function toggleLayout(){if(!need())return;M.settings.layout=M.settings.layout==='tidy'?'free':'tidy';if(M.settings.layout==='tidy')markDirty();else{render();viewDirty()}toast(t(M.settings.layout==='tidy'?'t_layoutTidy':'t_layoutFree'));refreshTB()}
-const titleOpts=()=>({text:t('central'),w:170,h:70,size:20,bold:true,fill:'#6366f1',color:'#ffffff',stroke:'#4f46e5'});
+const titleOpts=()=>({text:t('central'),w:170,h:70,size:20,bold:true,fill:'#1f2937',color:'#ffffff',stroke:'#111827'});
 function freeSpot(w,h,c){c=c||centerW();const ok=(x,y)=>!M.nodes.some(n=>x-w/2<n.x+n.w+20&&x+w/2>n.x-20&&y-h/2<n.y+n.h+20&&y+h/2>n.y-20),L=[];for(let i=-4;i<=4;i++)for(let j=-4;j<=4;j++)L.push([i,j]);L.sort((a,b)=>Math.hypot(a[0],a[1])-Math.hypot(b[0],b[1])||b[1]-a[1]);for(const[i,j]of L){const x=c[0]+i*(w+40),y=c[1]+j*(h+40);if(ok(x,y))return[x,y]}return c}
 function hitNode(x,y,ex){const m=28/M.view.z;let best=null,bd=1e9;for(const n of M.nodes){if(n.id===ex)continue;const dx=Math.max(n.x-x,0,x-n.x-n.w),dy=Math.max(n.y-y,0,y-n.y-n.h),d=Math.hypot(dx,dy);if(d<=m&&d<bd){bd=d;best=n}}return best}
 function linkClick(id){if(!linkFrom){linkFrom=id;sel={n:new Set([id]),l:null};hint();render();return}if(id===linkFrom)return;let l=M.links.find(x=>x.from===linkFrom&&x.to===id);if(!l){snapshot();l=mkl({from:linkFrom,to:id,end:'none'});M.links.push(l);markDirty()}linkFrom=null;tool='select';hint();setSel([],l.id)}
