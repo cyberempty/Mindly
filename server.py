@@ -212,7 +212,7 @@ if __name__ == '__main__':
     try:
         srv = ThreadingHTTPServer((HOST, PORT), H)
     except OSError:
-        print('Porta %d occupata (Mindly gia\' attivo?) / Port %d busy (Mindly already running?)' % (PORT, PORT))
+        print('Port %d is busy (is Mindly already running?)' % PORT)
         if '--open' in sys.argv:
             webbrowser.open(url)
         sys.exit(1)

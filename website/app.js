@@ -2,177 +2,176 @@
 const $=s=>document.querySelector(s),uid=()=>Math.random().toString(36).slice(2,10),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 /* ---------- i18n ---------- */
 const D={};
-`lang|Lingua|Language
-a_new|Nuovo progetto|New project
-a_open|Apri progetto…|Open project…
-a_save|Salva|Save
-a_saveas|Salva come / duplica…|Save as / duplicate…
-a_close|Chiudi progetto|Close project
-a_rename|Rinomina progetto…|Rename project…
-a_import|Importa JSON…|Import JSON…
-a_exportJson|Esporta JSON|Export JSON
-a_exportSvg|Esporta SVG|Export SVG
-a_exportPng|Esporta PNG|Export PNG
-a_exportPdf|Esporta PDF|Export PDF
-a_undo|Annulla|Undo
-a_redo|Ripristina|Redo
-a_redo2|Ripristina (alternativa)|Redo (alternative)
-a_copy|Copia|Copy
-a_cut|Taglia|Cut
-a_paste|Incolla|Paste
-a_dup|Duplica|Duplicate
-a_del|Elimina|Delete
-a_selAll|Seleziona tutto|Select all
-a_desel|Deseleziona / annulla operazione|Deselect / cancel operation
-a_sibling|Crea nodo fratello|Add sibling node
-a_child|Crea nodo figlio|Add child node
-a_edit|Modifica testo|Edit text
-a_node|Nuovo nodo|New node
-a_root|Blocco titolo (nodo principale)|Title block (main node)
-a_link|Modalità collegamento|Connect mode
-a_select|Selezione|Select
-a_zoomIn|Zoom avanti|Zoom in
-a_zoomOut|Zoom indietro|Zoom out
-a_zoomReset|Reset zoom (100%)|Reset zoom (100%)
-a_fit|Adatta mappa allo schermo|Fit map to screen
-a_fitView|Adatta/reset visualizzazione|Fit/reset view
-a_grid|Griglia|Grid
-a_snap|Snap alla griglia|Snap to grid
-a_full|Schermo intero|Full screen
-a_theme|Tema chiaro/scuro|Light/dark theme
-a_bold|Grassetto|Bold
-a_italic|Corsivo|Italic
-a_center|Centra testo|Center text
-a_shortcuts|Scorciatoie da tastiera|Keyboard shortcuts
-a_shortcuts2|Elenco comandi rapidi|Quick commands list
-a_about|Informazioni su Mindly|About Mindly
-a_projects|Progetti|Projects
-a_connect|Collega|Connect
-a_props|Proprietà|Properties
-a_pan|Sposta la mappa (trascina lo sfondo o Spazio + trascina)|Pan the map (drag the background or Space + drag)
-a_zoomWheel|Zoom con la rotella|Zoom with mouse wheel
-a_scrollWheel|Scorri la mappa|Scroll the map
-a_band|Selezione ad area|Area selection
-a_moveAlone|Sposta solo questo blocco (senza i collegati)|Move only this block (without its branch)
-a_layout|Modalità ordinata (griglia invisibile)|Tidy mode (invisible grid)
-a_childLeft|Crea nodo figlio a sinistra|Add child node on the left
-t_layoutTidy|Modalità ordinata attiva: i blocchi si dispongono da soli|Tidy mode on: blocks arrange themselves
-t_layoutFree|Modalità libera: i blocchi restano dove li metti|Free mode: blocks stay where you put them
-a_resizeProp|Ridimensiona mantenendo le proporzioni|Resize keeping proportions
-a_autofit|Adatta al testo|Fit to text
-a_reparent|Trascina un blocco sopra un altro per agganciarlo|Drag a block onto another to attach it
-title|Titolo|Title
-a_titleRC|Doppio clic destro sullo sfondo: crea il blocco titolo|Double right-click on the background: create the title block
-a_preview|Anteprima…|Preview…
-a_msShift|Aggiungi/rimuovi dalla selezione|Add/remove from selection
-a_msCtrl|Selezione multipla|Multiple selection
-m_file|File|File
-m_edit|Modifica|Edit
-m_insert|Inserisci|Insert
-m_view|Visualizza|View
-m_help|Aiuto|Help
-g_file|File e progetto|File and project
-g_edit|Modifica|Edit
-g_create|Creazione nodi|Node creation
-g_nav|Navigazione canvas|Canvas navigation
-g_sel|Selezione|Selection
-g_fmt|Formattazione|Formatting
-g_view|Visualizzazione|View
-g_help|Aiuto|Help
-p_node|Nodo|Node
-p_multi|{0} nodi selezionati|{0} nodes selected
-p_link|Collegamento|Link
-p_text|Testo|Text
-p_fill|Colore sfondo|Background color
-p_tcolor|Colore testo|Text color
-p_shape|Forma|Shape
-p_w|Larghezza|Width
-p_h|Altezza|Height
-p_font|Font|Font
-p_size|Dimensione font|Font size
-p_style|Stile|Style
-p_align|Allineamento|Alignment
-p_stroke|Bordo|Border
-p_sw|Spessore bordo|Border width
-p_radius|Raggio bordo|Border radius
-p_op|Opacità|Opacity
-p_color|Colore|Color
-p_width|Spessore|Thickness
-p_type|Tipo|Type
-p_dashed|Tratteggiata|Dashed
-p_start|Estremità iniziale|Start cap
-p_end|Estremità finale|End cap
-p_none|Nessuna selezione|No selection
-p_hint|Seleziona un nodo o un collegamento per modificarne le proprietà.|Select a node or a link to edit its properties.
-p_stats|{0} nodi · {1} collegamenti|{0} nodes · {1} links
-s_rect|Rettangolo|Rectangle
-s_rounded|Rettangolo arrotondato|Rounded rectangle
-s_circle|Cerchio|Circle
-s_ellipse|Ellisse|Ellipse
-s_pill|Pillola|Pill
-o_straight|Linea semplice|Simple line
-o_curve|Curva|Curve
-o_ortho|Ortogonale|Orthogonal
-c_none|Nessuna|None
-c_arrow|Freccia|Arrow
-c_dot|Punto|Dot
-st_saved|Salvato|Saved
-st_saving|Salvataggio…|Saving…
-st_unsaved|Modifiche non salvate|Unsaved changes
-st_error|Errore di salvataggio|Save error
-st_none|Nessun progetto|No project
-t_created|Progetto creato|Project created
-t_saved|Progetto salvato|Project saved
-t_deleted|Progetto eliminato|Project deleted
-t_renamed|Progetto rinominato|Project renamed
-t_dupd|Progetto duplicato|Project duplicated
-t_exported|Esportazione completata|Export completed
-t_imported|Importazione completata|Import completed
-t_saveErr|Errore di salvataggio|Save error
-t_loadErr|Errore di caricamento|Load error
-t_importErr|File non valido|Invalid file
-t_empty|La mappa è vuota|The map is empty
-t_nosel|Seleziona prima un nodo|Select a node first
-t_noproj|Apri o crea un progetto|Open or create a project
-e_invalid_name|Nome non valido|Invalid name
-e_not_found|Progetto non trovato|Project not found
-e_invalid_project|Dati del progetto non validi|Invalid project data
-e_bad_json|Richiesta non valida|Invalid request
-e_too_large|Dati troppo grandi|Data too large
-e_error|Errore imprevisto|Unexpected error
-d_name|Nome del progetto|Project name
-d_new|Nuovo progetto|New project
-d_rename|Rinomina progetto|Rename project
-d_dup|Duplica progetto|Duplicate project
-d_delTitle|Elimina progetto|Delete project
-d_delMsg|Eliminare definitivamente «{0}»? L'operazione non può essere annullata.|Permanently delete "{0}"? This cannot be undone.
-b_ok|OK|OK
-b_cancel|Annulla|Cancel
-b_delete|Elimina|Delete
-b_open|Apri|Open
-b_close|Chiudi|Close
-b_dup|Duplica|Duplicate
-b_ren|Rinomina|Rename
-copyOf|Copia di {0}|Copy of {0}
-untitled|Mappa senza titolo|Untitled map
-central|Idea centrale|Central idea
-newNode|Nuovo nodo|New node
-pm_search|Cerca progetti…|Search projects…
-pm_mod|Ultima modifica|Last modified
-pm_cre|Data creazione|Creation date
-pm_name|Nome|Name
-pm_recent|Recenti|Recent
-pm_none|Nessun progetto trovato.|No projects found.
-pm_created|Creato|Created
-pm_modified|Modificato|Modified
-em_title|Nessun progetto aperto|No project open
-em_msg|Crea una nuova mappa mentale o apri un progetto esistente.|Create a new mind map or open an existing project.
-h_select|Clic: seleziona · doppio clic: modifica · trascina lo sfondo: sposta la mappa · Ctrl+rotella: zoom · trascina il ● per collegare|Click: select · double-click: edit · drag the background: pan · Ctrl+wheel: zoom · drag the ● to connect
-h_link1|Collegamento: clicca il nodo di partenza (Esc per annullare)|Connect: click the source node (Esc to cancel)
-h_link2|Ora clicca il nodo di destinazione (Esc per annullare)|Now click the target node (Esc to cancel)
-ab_text|Mindly è un editor locale di mappe mentali. Tutti i dati restano sul tuo computer, nella cartella «projects».|Mindly is a local mind map editor. All your data stays on your computer, in the "projects" folder.`.split('\n').forEach(l=>{const[a,b,c]=l.split('|');D[a]={it:b,en:c}});
-let lang=localStorage.mLang||'it',theme=localStorage.mTheme||'light';
-const t=(k,...a)=>{let s=(D[k]||{})[lang]||k;a.forEach((v,i)=>s=s.replace('{'+i+'}',()=>v));return s};
+`a_new|New project
+a_open|Open project…
+a_save|Save
+a_saveas|Save as / duplicate…
+a_close|Close project
+a_rename|Rename project…
+a_import|Import JSON…
+a_exportJson|Export JSON
+a_exportSvg|Export SVG
+a_exportPng|Export PNG
+a_exportPdf|Export PDF
+a_undo|Undo
+a_redo|Redo
+a_redo2|Redo (alternative)
+a_copy|Copy
+a_cut|Cut
+a_paste|Paste
+a_dup|Duplicate
+a_del|Delete
+a_selAll|Select all
+a_desel|Deselect / cancel operation
+a_sibling|Add sibling node
+a_child|Add child node
+a_edit|Edit text
+a_node|New node
+a_root|Title block (main node)
+a_link|Connect mode
+a_select|Select
+a_zoomIn|Zoom in
+a_zoomOut|Zoom out
+a_zoomReset|Reset zoom (100%)
+a_fit|Fit map to screen
+a_fitView|Fit/reset view
+a_grid|Grid
+a_snap|Snap to grid
+a_full|Full screen
+a_theme|Light/dark theme
+a_bold|Bold
+a_italic|Italic
+a_center|Center text
+a_shortcuts|Keyboard shortcuts
+a_shortcuts2|Quick commands list
+a_about|About Mindly
+a_projects|Projects
+a_connect|Connect
+a_props|Properties
+a_pan|Pan the map (drag the background or Space + drag)
+a_zoomWheel|Zoom with mouse wheel
+a_scrollWheel|Scroll the map
+a_band|Area selection
+a_moveAlone|Move only this block (without its branch)
+a_layout|Tidy mode (invisible grid)
+a_childLeft|Add child node on the left
+t_layoutTidy|Tidy mode on: blocks arrange themselves
+t_layoutFree|Free mode: blocks stay where you put them
+a_resizeProp|Resize keeping proportions
+a_autofit|Fit to text
+a_reparent|Drag a block onto another to attach it
+title|Title
+a_titleRC|Double right-click on the background: create the title block
+a_preview|Preview…
+a_msShift|Add/remove from selection
+a_msCtrl|Multiple selection
+m_file|File
+m_edit|Edit
+m_insert|Insert
+m_view|View
+m_help|Help
+g_file|File and project
+g_edit|Edit
+g_create|Node creation
+g_nav|Canvas navigation
+g_sel|Selection
+g_fmt|Formatting
+g_view|View
+g_help|Help
+p_node|Node
+p_multi|{0} nodes selected
+p_link|Link
+p_text|Text
+p_fill|Background color
+p_tcolor|Text color
+p_shape|Shape
+p_w|Width
+p_h|Height
+p_font|Font
+p_size|Font size
+p_style|Style
+p_align|Alignment
+p_stroke|Border
+p_sw|Border width
+p_radius|Border radius
+p_op|Opacity
+p_color|Color
+p_width|Thickness
+p_type|Type
+p_dashed|Dashed
+p_start|Start cap
+p_end|End cap
+p_none|No selection
+p_hint|Select a node or a link to edit its properties.
+p_stats|{0} nodes · {1} links
+s_rect|Rectangle
+s_rounded|Rounded rectangle
+s_circle|Circle
+s_ellipse|Ellipse
+s_pill|Pill
+o_straight|Simple line
+o_curve|Curve
+o_ortho|Orthogonal
+c_none|None
+c_arrow|Arrow
+c_dot|Dot
+st_saved|Saved
+st_saving|Saving…
+st_unsaved|Unsaved changes
+st_error|Save error
+st_none|No project
+t_created|Project created
+t_saved|Project saved
+t_deleted|Project deleted
+t_renamed|Project renamed
+t_dupd|Project duplicated
+t_exported|Export completed
+t_imported|Import completed
+t_saveErr|Save error
+t_loadErr|Load error
+t_importErr|Invalid file
+t_empty|The map is empty
+t_nosel|Select a node first
+t_noproj|Open or create a project
+e_invalid_name|Invalid name
+e_not_found|Project not found
+e_invalid_project|Invalid project data
+e_bad_json|Invalid request
+e_too_large|Data too large
+e_error|Unexpected error
+d_name|Project name
+d_new|New project
+d_rename|Rename project
+d_dup|Duplicate project
+d_delTitle|Delete project
+d_delMsg|Permanently delete "{0}"? This cannot be undone.
+b_ok|OK
+b_cancel|Cancel
+b_delete|Delete
+b_open|Open
+b_close|Close
+b_dup|Duplicate
+b_ren|Rename
+copyOf|Copy of {0}
+untitled|Untitled map
+central|Central idea
+newNode|New node
+pm_search|Search projects…
+pm_mod|Last modified
+pm_cre|Creation date
+pm_name|Name
+pm_recent|Recent
+pm_none|No projects found.
+pm_created|Created
+pm_modified|Modified
+em_title|No project open
+em_msg|Create a new mind map or open an existing project.
+h_select|Click: select · double-click: edit · drag the background: pan · Ctrl+wheel: zoom · drag the ● to connect
+h_link1|Connect: click the source node (Esc to cancel)
+h_link2|Now click the target node (Esc to cancel)
+ab_text|Mindly is a local mind map editor. All your data stays on your computer, in the "projects" folder.`.split('\n').forEach(l=>{const[a,b]=l.split('|');D[a]=b});
+let theme=localStorage.mTheme||'light';
+const t=(k,...a)=>{let s=D[k]||k;a.forEach((v,i)=>s=s.replace('{'+i+'}',()=>v));return s};
 /* ---------- state ---------- */
 const svg=$('#svg');
 const FONTS=[['Segoe UI, Arial, sans-serif','Sans'],['Georgia, serif','Serif'],['Consolas, monospace','Mono'],['Comic Sans MS, cursive','Script']];
@@ -240,11 +239,11 @@ const MENUS=[['m_file',['new','open','save','saveas','rename','close','-','expor
 const TB=[['undo','↶'],['redo','↷'],'|',['dup','⧉'],['del','✕'],'|',['zoomOut','−'],'z',['zoomIn','+'],['fit','⤢'],'|',['grid','▦'],['snap','⌗'],['layout','⊞'],'|',['props','☰']];
 const TL=[['select','↖'],['node','＋'],['child','→'],['sibling','↓'],['link','⟷']];
 const AI={left:'<path d="M1 1h12M1 6h8M1 11h11"/>',center:'<path d="M1 1h12M3 6h8M2 11h10"/>',right:'<path d="M1 1h12M5 6h8M2 11h11"/>'};
-function buildUI(){document.documentElement.lang=lang;const tip=a=>esc(t('a_'+a)+(shortcutOf(a)?` (${shortcutOf(a)})`:''));
+function buildUI(){const tip=a=>esc(t('a_'+a)+(shortcutOf(a)?` (${shortcutOf(a)})`:''));
  $('#menubar').innerHTML=MENUS.map((m,i)=>`<button data-m="${i}">${t(m[0])}</button>`).join('');
  $('#toolbar').innerHTML=TB.map(x=>x==='|'?'<i class="sep"></i>':x==='z'?`<button id="zl" data-act="zoomReset" title="${tip('zoomReset')}">100%</button>`:`<button data-act="${x[0]}" title="${tip(x[0])}">${x[1]}</button>`).join('');
  $('#tools').innerHTML=`<button class="ttl" data-act="root" title="${tip('root')}"><b>T</b><small>${t('title')}</small></button><hr>`+TL.map(x=>`<button data-act="${x[0]}" title="${tip(x[0])}">${x[1]}</button>`).join('')+'<hr>'+SH.map(s=>`<button data-shape="${s}" title="${t('s_'+s)}"><i class="shi sh-${s}"></i></button>`).join('');
- $('#lang').value=lang;$('#lang').title=t('lang');$('#theme').title=t('a_theme');$('#theme').textContent=theme==='dark'?'☀':'☾';$('#btnProjects').textContent=t('a_projects');$('#pname').title=t('a_rename');
+ $('#theme').title=t('a_theme');$('#theme').textContent=theme==='dark'?'☀':'☾';$('#btnProjects').textContent=t('a_projects');$('#pname').title=t('a_rename');
  $('#empty').innerHTML=`<h2>${t('em_title')}</h2><p class="muted">${t('em_msg')}</p><div><button class="btn pri" data-act="new">${t('a_new')}</button> <button class="btn" data-act="open">${t('a_open')}</button></div>`;
  updTitle();setStat(st);hint();render()}
 function updTitle(){document.title=(cur?cur.name+' – ':'')+'Mindly';$('#pname').textContent=cur?cur.name:t('st_none')}
@@ -278,7 +277,7 @@ addEventListener('pagehide',()=>{if(dirty&&cur)fetch('/api/projects/'+encodeURIC
 /* ---------- projects ---------- */
 const recs=()=>{try{return JSON.parse(localStorage.mRecent||'[]')}catch(e){return[]}};
 const setRecs=a=>localStorage.mRecent=JSON.stringify(a.slice(0,8));
-const fmtD=s=>s?new Date(s).toLocaleString(lang==='it'?'it-IT':'en-GB'):'';
+const fmtD=s=>s?new Date(s).toLocaleString('en-GB'):'';
 function resetCur(){cur=null;M=blank();undoS=[];redoS=[];dirty=false;clearTimeout(saveT);sel={n:new Set(),l:null};editing=null;$('#editor').hidden=true;localStorage.removeItem('mLast');setStat('none');updTitle();render();buildPanel()}
 async function openProject(id){if(cur&&dirty&&!(await save(false)))return;try{const r=await api('GET','/projects/'+encodeURIComponent(id));cur={id:r.id,name:r.metadata.name,created:r.metadata.created,modified:r.metadata.modified};M=norm(r.project);layoutAll();if(!r.project.view){const s=SR();M.view={x:s.width/2,y:s.height/2,z:1}}undoS=[];redoS=[];sel={n:new Set(),l:null};dirty=false;tool='select';linkFrom=null;setRecs([id,...recs().filter(x=>x!==id)]);localStorage.mLast=id;setStat('saved');updTitle();hint();render();buildPanel()}catch(e){err(e,'t_loadErr')}}
 const newMap=()=>({version:1,nodes:[rootNode()],links:[],settings:{grid:true,snap:false,layout:'tidy'}});
@@ -401,7 +400,6 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-act],[data
  else if(b.dataset.shape){const o=b.dataset.shape==='circle'?{shape:'circle',w:100,h:100}:{shape:b.dataset.shape},[x,y]=freeSpot(o.w||140,o.h||56);addNode(x,y,o)}
  else{const m=MENUS[b.dataset.m],r=b.getBoundingClientRect();popup(m[1].map(a=>a==='-'?'-':{l:t('a_'+a),sc:shortcutOf(a),f:ACT[a],chk:a==='grid'?M.settings.grid:a==='snap'?M.settings.snap:a==='layout'?M.settings.layout==='tidy':false}),r.left,r.bottom)}});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#ctx'))hidePop()});
-$('#lang').addEventListener('change',e=>{lang=e.target.value;localStorage.mLang=lang;buildUI();buildPanel()});
 /* ---------- canvas interaction ---------- */
 function subtree(ids){const out=new Set(ids),st=[...ids];while(st.length){const i=st.pop();for(const l of M.links)if(l.from===i&&!out.has(l.to)&&byId(l.to)){out.add(l.to);st.push(l.to)}}return out}
 const GX=70,GY=18;
