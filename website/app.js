@@ -213,7 +213,7 @@ function nodeSVG(n,hide){const cx=n.x+n.w/2,cy=n.y+n.h/2,a=`fill="${esc(n.fill)}
  return `<g opacity="${n.opacity}">${s}</g>`}
 const hw=n=>n.shape==='circle'?Math.min(n.w,n.h)/2:n.w/2,hh=n=>n.shape==='circle'?Math.min(n.w,n.h)/2:n.h/2,ang=(a,b)=>Math.atan2(b[1]-a[1],b[0]-a[0]);
 function edge(n,tx,ty){const cx=n.x+n.w/2,cy=n.y+n.h/2,dx=tx-cx,dy=ty-cy;if(!dx&&!dy)return[cx,cy];const a=hw(n),b=hh(n),k=(n.shape==='ellipse'||n.shape==='circle')?1/Math.hypot(dx/a,dy/b):1/Math.max(Math.abs(dx)/a,Math.abs(dy)/b);return[cx+dx*k,cy+dy*k]}
-function geo(l){const a=byId(l.from),b=byId(l.to);if(!a||!b)return null;const ac=[a.x+a.w/2,a.y+a.h/2],bc=[b.x+b.w/2,b.y+b.h/2],h=(M.settings.layout==='tidy'&&Math.abs(bc[0]-ac[0])>hw(a)+hw(b))||Math.abs(bc[0]-ac[0])>=Math.abs(bc[1]-ac[1]),s=(h?bc[0]>=ac[0]:bc[1]>=ac[1])?1:-1;let p,q,d,a1,a2;
+function geo(l){const a=byId(l.from),b=byId(l.to);if(!a||!b)return null;const ac=[a.x+a.w/2,a.y+a.h/2],bc=[b.x+b.w/2,b.y+b.h/2],h=M.settings.layout==='tidy'||Math.abs(bc[0]-ac[0])>=Math.abs(bc[1]-ac[1]),s=(h?bc[0]>=ac[0]:bc[1]>=ac[1])?1:-1;let p,q,d,a1,a2;
  if(h){p=[ac[0]+s*hw(a),ac[1]];q=[bc[0]-s*hw(b),bc[1]]}else{p=[ac[0],ac[1]+s*hh(a)];q=[bc[0],bc[1]-s*hh(b)]}
  if(l.type==='ortho'){if(h){const m=(p[0]+q[0])/2;d=`M${p}L${m},${p[1]}L${m},${q[1]}L${q}`;a1=s>0?Math.PI:0;a2=s>0?0:Math.PI}else{const m=(p[1]+q[1])/2;d=`M${p}L${p[0]},${m}L${q[0]},${m}L${q}`;a1=s>0?-Math.PI/2:Math.PI/2;a2=s>0?Math.PI/2:-Math.PI/2}}
  else if(l.type==='curve'){const c1=h?[p[0]+(q[0]-p[0])/2,p[1]]:[p[0],p[1]+(q[1]-p[1])/2],c2=h?[q[0]-(q[0]-p[0])/2,q[1]]:[q[0],q[1]-(q[1]-p[1])/2];d=`M${p}C${c1} ${c2} ${q}`;a1=ang(c1,p);a2=ang(c2,q)}
