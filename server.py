@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Mindly - local server (standard library only, localhost only)."""
 import json, os, re, shutil, sys, threading, uuid, webbrowser
+sys.dont_write_bytecode = True
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, unquote
@@ -212,13 +213,16 @@ if __name__ == '__main__':
     try:
         srv = ThreadingHTTPServer((HOST, PORT), H)
     except OSError:
-        print('Port %d is busy (is Mindly already running?)' % PORT)
+        print('Port %d is busy: another copy of Mindly is already running.' % PORT)
+        print('Close its window (or the old python.exe) and start this one again.')
+        print('This copy lives in: ' + BASE)
         if '--open' in sys.argv:
             webbrowser.open(url)
         sys.exit(1)
     if '--open' in sys.argv:
         threading.Timer(0.8, webbrowser.open, [url]).start()
     print('Mindly -> ' + url)
+    print('Folder: ' + BASE)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

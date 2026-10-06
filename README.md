@@ -22,7 +22,7 @@ No accounts, cloud, online databases or Internet connection are needed: your pro
 13. [Copy, paste, duplicate](#13-copy-paste-duplicate)
 14. [Saving and autosave](#14-saving-and-autosave)
 15. [Import, export and preview](#15-import-export-and-preview)
-16. [Theme](#16-theme)
+16. [Language and theme](#16-language-and-theme)
 17. [All keyboard shortcuts](#17-all-keyboard-shortcuts)
 18. [Mouse commands](#18-mouse-commands)
 19. [Menus: full list of items](#19-menus-full-list-of-items)
@@ -80,7 +80,7 @@ The `projects/` folder contains **only** the projects you create. Each project i
 What `start.bat` does:
 
 1. Checks whether Python is installed (it tries `py -3` first, then `python`).
-2. If Python is missing, it shows a clear message with the download link.
+2. If Python is missing, it shows a clear message (in Italian and English) with the download link.
 3. Creates the `projects/` folder if it doesn't exist.
 4. Starts `server.py` and opens the browser automatically.
 5. Keeps the server running until you close the window.
@@ -120,6 +120,7 @@ From left to right:
 - **Project name**: click it to rename the project.
 - **Save status**: *Saved*, *Saving…*, *Unsaved changes*, *Save error* (or *No project*).
 - **Projects**: opens the project management window.
+- **IT / EN selector**: changes the language.
 - **Theme button** (☾ / ☀): switches between light and dark theme.
 
 ### Toolbar (below the top bar)
@@ -145,7 +146,7 @@ The grid, snap, tidy mode and link buttons are highlighted when active.
 
 From top to bottom:
 
-- **T / Title** (dark button): creates a **title block**.
+- **T / Title** (purple button): creates a **title block**.
 - **↖ Select**: normal mode.
 - **＋ New block**: creates a block.
 - **→ Child block**: creates a block linked to the selected one.
@@ -236,9 +237,7 @@ Important details:
 
 ### Title block
 
-It has a different style from the normal block: **dark gray (almost black)** background, **white** text, **bold**, larger font (20 px). It serves as the main block of the map. You can create as many as you want.
-
-**Project name sync:** the default title block (the one created with a new project) is linked to the project name. As soon as you edit its text, the map name changes too: the name at the top, the browser tab title, the name in the Projects window and the project folder. The name is cut to 60 characters, line breaks become spaces, and if you delete all the text the name stays as it was. Extra title blocks created with `T`, and pasted or duplicated title blocks, do not change the name. Projects created with older versions have no default title block, so use *Rename project* for them.
+It has a different style from the normal block: **purple** background, **white** text, **bold**, larger font (20 px). It serves as the main block of the map. You can create as many as you want.
 
 ### Selecting
 
@@ -320,7 +319,7 @@ You cannot attach a block to one of its own descendants (it would create a close
 
 ### Default block style
 
-White background, dark gray text, 2 px dark gray border, Sans font at 16 px, centered text, 100% opacity.
+White background, dark gray text, 2 px light purple border, Sans font at 16 px, centered text, 100% opacity.
 
 ---
 
@@ -336,10 +335,6 @@ You have four ways:
 4. **`Tab` / `Shift+Tab` / `Enter`**: create a new block already linked.
 
 If a link already exists in the same direction between two blocks, a second one is not created. After manual creation the link stays **selected**.
-
-### Where lines attach
-
-Lines always start and end at the **center of one of the four sides** of a block (never at a corner). If the target block is farther away horizontally, the line leaves from the center of the right (or left) side and arrives at the center of the opposite side; if it is farther vertically, it uses the top or bottom side. When you move a block, the line switches to the most suitable side on its own. This applies to curved, simple and orthogonal lines, and arrowheads/dots sit at the same points.
 
 ### Direction
 
@@ -535,11 +530,12 @@ Exported files take the project's name (invalid characters become `_`) and are d
 
 ---
 
-## 16. Theme
+## 16. Language and theme
 
-- Mindly's interface is in **English**.
-- **Theme**: light or dark with the ☾ / ☀ button. The accent colors are black and dark gray (light gray in the dark theme).
-- Theme, recent projects and Properties panel visibility are remembered by the browser, even after closing.
+- **Languages**: **Italian** (default) and **English**, with the IT / EN selector at the top right.
+- Everything is translated: menus, buttons, hints, windows, notifications, errors, panels, shortcuts.
+- **Theme**: light or dark with the ☾ / ☀ button.
+- Language, theme and Properties panel visibility are remembered by the browser, even after closing.
 
 ---
 
@@ -735,17 +731,17 @@ Contains everything needed to rebuild the map:
     {
       "id": "a1b2c3d4", "x": -85, "y": -35, "w": 170, "h": 70,
       "text": "Central idea",
-      "fill": "#1f2937", "color": "#ffffff",
+      "fill": "#6366f1", "color": "#ffffff",
       "font": "Segoe UI, Arial, sans-serif", "size": 20,
       "bold": true, "italic": false, "align": "center",
-      "stroke": "#111827", "sw": 2, "radius": 6,
+      "stroke": "#4f46e5", "sw": 2, "radius": 6,
       "opacity": 1, "shape": "rounded"
     }
   ],
   "links": [
     {
       "id": "e5f6g7h8", "from": "a1b2c3d4", "to": "i9j0k1l2",
-      "color": "#4b5563", "width": 2, "type": "curve",
+      "color": "#64748b", "width": 2, "type": "curve",
       "dashed": false, "start": "none", "end": "none"
     }
   ],
@@ -776,7 +772,7 @@ Name, unique ID, creation and modification dates (in UTC), version and applicati
 
 ### Browser settings
 
-Theme, recent projects and Properties panel visibility are saved in the browser (`localStorage`), not in the project folder.
+Language, theme, recent projects and Properties panel visibility are saved in the browser (`localStorage`), not in the project folder.
 
 ### Backups and transfers
 
@@ -888,8 +884,8 @@ Yes, they are normal JSON, but make a backup first.
 **How do I make a copy of a project?**
 From the Projects window with the ⧉ (Duplicate) button, or with `Ctrl+Shift+S`.
 
-**How do I change the theme?**
-With the ☾/☀ button at the top right.
+**How do I change the language or theme?**
+From the IT/EN selector and the ☾/☀ button at the top right.
 
 **Does the dark theme change exported files?**
 No, exports are always on a white background.

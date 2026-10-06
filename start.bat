@@ -2,6 +2,7 @@
 chcp 65001 >nul
 title Mindly
 cd /d "%~dp0"
+set PYTHONDONTWRITEBYTECODE=1
 set "PY="
 py -3 --version >nul 2>nul && set "PY=py -3"
 if not defined PY python --version >nul 2>nul && set "PY=python"
