@@ -207,6 +207,19 @@ class H(SimpleHTTPRequestHandler):
         self.api('DELETE') if self.path.startswith('/api/') else self.send_error(404)
 
 
+def open_browser(url):
+    """Open the browser only once the server is actually accepting connections."""
+    import socket, time
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((HOST, PORT), timeout=0.5):
+                webbrowser.open(url)
+                return
+        except OSError:
+            time.sleep(0.15)
+
+
 if __name__ == '__main__':
     os.makedirs(PROJ, exist_ok=True)
     url = 'http://%s:%d/' % (HOST, PORT)
@@ -216,11 +229,10 @@ if __name__ == '__main__':
         print('Port %d is busy: another copy of Mindly is already running.' % PORT)
         print('Close its window (or the old python.exe) and start this one again.')
         print('This copy lives in: ' + BASE)
-        if '--open' in sys.argv:
-            webbrowser.open(url)
+        webbrowser.open(url)
         sys.exit(1)
-    if '--open' in sys.argv:
-        threading.Timer(0.8, webbrowser.open, [url]).start()
+    # Open the website automatically as soon as the server is ready.
+    threading.Thread(target=open_browser, args=(url,), daemon=True).start()
     print('Mindly -> ' + url)
     print('Folder: ' + BASE)
     try:
