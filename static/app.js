@@ -8,7 +8,8 @@ a_save|Save
 a_saveas|Save as / duplicate…
 a_close|Close project
 a_rename|Rename project…
-a_import|Import JSON…
+a_export|Export
+a_import|Import…
 a_importProj|Import project
 a_exportJson|Export JSON
 a_exportSvg|Export SVG
@@ -308,7 +309,7 @@ mm.addEventListener('pointermove',e=>{if(!mmRC)return;const sr=stg.getBoundingCl
 const endMmRC=()=>{mmRC=null};mm.addEventListener('pointerup',endMmRC);mm.addEventListener('pointercancel',endMmRC);
 function refreshTB(){const on=(a,v)=>document.querySelectorAll(`[data-act="${a}"]`).forEach(b=>b.classList.toggle('on',!!v));on('grid',M.settings.grid);on('snap',M.settings.snap);on('layout',M.settings.layout==='tidy');on('link',tool==='link');on('select',tool==='select');on('minimap',mmVisible())}
 /* ---------- UI build ---------- */
-const MENUS=[['m_file',['new','open','save','saveas','rename','close','-','exportPdf','exportPng','exportSvg','exportJson','import','-','preview']],['m_edit',['undo','redo','-','cut','copy','paste','dup','del','-','selAll','desel']],['m_insert',['root','node','child','childLeft','sibling','link']],['m_view',['props','minimap','zoomIn','zoomOut','zoomReset','fit','-','grid','snap','layout','-','full','theme']],['m_help',['shortcuts','about']]];
+const MENUS=[['m_file',['new','open','save','saveas','rename','close','-','export','import','-','preview']],['m_edit',['undo','redo','-','cut','copy','paste','dup','del','-','selAll','desel']],['m_insert',['root','node','child','childLeft','sibling','link']],['m_view',['props','minimap','zoomIn','zoomOut','zoomReset','fit','-','grid','snap','layout','-','full','theme']],['m_help',['shortcuts','about']]];
 const TB=[['undo','↶'],['redo','↷'],'|',['dup','⧉'],['del','✕'],'|',['zoomOut','−'],'z',['zoomIn','+'],['fit','⤢'],'|',['grid','▦'],['snap','⌗'],['layout','⊞'],['minimap','◫'],'|',['props','☰']];
 const TL=[['select','↖'],['node','＋'],['child','→'],['sibling','↓'],['link','⟷']];
 const AI={left:'<path d="M1 1h12M1 6h8M1 11h11"/>',center:'<path d="M1 1h12M3 6h8M2 11h10"/>',right:'<path d="M1 1h12M5 6h8M2 11h11"/>'};
@@ -326,7 +327,13 @@ function toast(m,ty){const e=document.createElement('div');e.className='toast'+(
 const err=(e,k)=>toast(t(k)+(D['e_'+e.message]?': '+t('e_'+e.message):''),'err');
 /* ---------- popup / modal ---------- */
 function hidePop(){$('#ctx').hidden=true}
-function popup(items,x,y){const p=$('#ctx');p.innerHTML=items.map((it,i)=>it==='-'?'<hr>':`<button data-i="${i}"><span class="ck">${it.chk?'✓':''}</span>${esc(it.l)}<kbd>${esc(it.sc||'')}</kbd></button>`).join('');p.hidden=false;p.style.left=Math.max(0,Math.min(x,innerWidth-p.offsetWidth-4))+'px';p.style.top=Math.max(0,Math.min(y,innerHeight-p.offsetHeight-4))+'px';p.onclick=e=>{const b=e.target.closest('button');if(!b)return;hidePop();items[b.dataset.i].f()}}
+function popup(items,x,y){const p=$('#ctx');
+ const row=(it,i)=>`<button data-i="${i}"${it.sub?' data-s="1"':''}><span class="ck">${it.chk?'✓':''}</span>${esc(it.l)}<kbd>${it.sub?'▸':esc(it.sc||'')}</kbd></button>`;
+ p.innerHTML=items.map((it,i)=>it==='-'?'<hr>':row(it,i)+(it.sub?`<div class="sub" hidden>${it.sub.map((q,k)=>row(q,i+'.'+k)).join('')}</div>`:'')).join('');
+ p.hidden=false;p.style.left=Math.max(0,Math.min(x,innerWidth-p.offsetWidth-4))+'px';p.style.top=Math.max(0,Math.min(y,innerHeight-p.offsetHeight-4))+'px';
+ const openSub=b=>{p.querySelectorAll('.sub').forEach(q=>q.hidden=true);if(!b||!b.dataset.s)return;const q=b.nextElementSibling;q.hidden=false;q.style.top=(b.offsetTop-5)+'px';q.classList.remove('flip');if(p.getBoundingClientRect().right+q.offsetWidth+8>innerWidth)q.classList.add('flip')};
+ p.onmouseover=e=>{const b=e.target.closest('button');if(b&&b.parentElement===p)openSub(b)};
+ p.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.s){openSub(b);return}const k=b.dataset.i.split('.');let it=items[k[0]];if(k.length>1)it=it.sub[k[1]];hidePop();it.f()}}
 function modal(title,body,btns,wide,oc){const m=$('#modal');m.innerHTML=`<div class="dlg${wide?' wide':''}"><h3>${title}</h3><div class="mb"></div><div class="mbt"></div></div>`;const mb=m.querySelector('.mb');typeof body==='string'?mb.innerHTML=body:mb.appendChild(body);const bt=m.querySelector('.mbt');(btns||[]).forEach(b=>{const e=document.createElement('button');e.className='btn '+(b.c||'');e.textContent=b.l;e.onclick=()=>{if(!b.f||b.f()!==false)closeModal()};bt.appendChild(e)});onMC=oc||null;m.hidden=false;m.onpointerdown=e=>{if(e.target===m)closeModal()}}
 function closeModal(){const f=onMC;onMC=null;const m=$('#modal');m.hidden=true;m.innerHTML='';f&&f()}
 function ask(title,label,val){return new Promise(res=>{const b=document.createElement('div');b.innerHTML=`<label class="f"><span>${label}</span><input maxlength="60" value="${esc(val)}"></label>`;let done=false;const fin=v=>{if(!done){done=true;res(v)}};modal(title,b,[{l:t('b_cancel'),f:()=>fin(null)},{l:t('b_ok'),c:'pri',f:()=>{const v=b.querySelector('input').value.trim();if(!v)return false;fin(v)}}],false,()=>fin(null));const i=b.querySelector('input');i.focus();i.select();i.onkeydown=e=>{if(e.key==='Enter')$('#modal .pri').click()}})}
@@ -473,7 +480,7 @@ const ACT={new:newProject,open:manager,projects:manager,save:()=>need()&&save(fa
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act],[data-shape],[data-m]');if(!b)return;b.blur();
  if(b.dataset.act)ACT[b.dataset.act]();
  else if(b.dataset.shape){const o=b.dataset.shape==='circle'?{shape:'circle',w:100,h:100}:{shape:b.dataset.shape},[x,y]=freeSpot(o.w||140,o.h||56);addNode(x,y,o)}
- else{const m=MENUS[b.dataset.m],r=b.getBoundingClientRect();popup(m[1].map(a=>a==='-'?'-':{l:t('a_'+a),sc:shortcutOf(a),f:ACT[a],chk:a==='grid'?M.settings.grid:a==='snap'?M.settings.snap:a==='layout'?M.settings.layout==='tidy':a==='minimap'?mmVisible():false}),r.left,r.bottom)}});
+ else{const m=MENUS[b.dataset.m],r=b.getBoundingClientRect();popup(m[1].map(a=>a==='-'?'-':a==='export'?{l:t('a_export'),sub:['exportPdf','exportPng','exportSvg','exportJson'].map(x=>({l:t('a_'+x),sc:shortcutOf(x),f:ACT[x]}))}:{l:t('a_'+a),sc:shortcutOf(a),f:ACT[a],chk:a==='grid'?M.settings.grid:a==='snap'?M.settings.snap:a==='layout'?M.settings.layout==='tidy':a==='minimap'?mmVisible():false}),r.left,r.bottom)}});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#ctx'))hidePop()});
 /* ---------- canvas interaction ---------- */
 function subtree(ids){const out=new Set(ids),st=[...ids];while(st.length){const i=st.pop();for(const l of M.links)if(l.from===i&&!out.has(l.to)&&byId(l.to)){out.add(l.to);st.push(l.to)}}return out}

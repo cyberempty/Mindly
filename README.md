@@ -509,7 +509,7 @@ Shows a short reminder.
 
 ## 15. Import, export and preview
 
-Everything happens **locally**. The items are in the **File** menu, in this order: Export PDF, Export PNG, Export SVG, Export JSON, Import JSON, Preview.
+Everything happens **locally**. The items are in the **File** menu, in this order: **Export ▸**, **Import…**, Preview. *Export* has an arrow (▸): click it, or just hover over it with the cursor, and a submenu opens with the export methods: PDF, PNG, SVG and JSON. *Import…* imports a JSON file.
 
 ### Important: always a light background
 
@@ -694,7 +694,7 @@ Some browsers **reserve** certain combinations and do not allow sites to interce
 ## 19. Menus: full list of items
 
 ### File
-New project · Open project… · Save · Save as / duplicate… · Rename project… · Close project · *(separator)* · Export PDF · Export PNG · Export SVG · Export JSON · Import JSON… · *(separator)* · Preview…
+New project · Open project… · Save · Save as / duplicate… · Rename project… · Close project · *(separator)* · **Export ▸** (submenu: PDF · PNG · SVG · JSON) · **Import…** · *(separator)* · Preview…
 
 ### Edit
 Undo · Redo · *(separator)* · Cut · Copy · Paste · Duplicate · Delete · *(separator)* · Select all · Deselect / cancel operation
