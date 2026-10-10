@@ -9,6 +9,7 @@ a_saveas|Save as / duplicate…
 a_close|Close project
 a_rename|Rename project…
 a_import|Import JSON…
+a_importProj|Import project
 a_exportJson|Export JSON
 a_exportSvg|Export SVG
 a_exportPng|Export PNG
@@ -54,6 +55,7 @@ a_scrollWheel|Scroll the map
 a_band|Area selection
 a_moveAlone|Move only this block (without its branch)
 a_layout|Tidy mode (invisible grid)
+a_minimap|Minimap
 a_childLeft|Add child node on the left
 t_layoutTidy|Tidy mode on: blocks arrange themselves
 t_layoutFree|Free mode: blocks stay where you put them
@@ -180,7 +182,7 @@ const SH=['rect','rounded','circle','ellipse','pill'];
 const blank=()=>({nodes:[],links:[],settings:{grid:true,snap:false,layout:'tidy'},view:{x:400,y:300,z:1}});
 const mk=o=>({id:uid(),x:0,y:0,w:140,h:56,text:'',fill:'#ffffff',color:'#1f2937',font:FONTS[0][0],size:16,bold:false,italic:false,align:'center',stroke:'#374151',sw:2,radius:6,opacity:1,shape:'rounded',...o});
 const mkl=o=>({id:uid(),from:'',to:'',color:'#4b5563',width:2,type:'curve',dashed:false,start:'none',end:'none',text:'',bold:false,...o});
-const norm=p=>{const b=blank();return{nodes:(p.nodes||[]).map(mk),links:(p.links||[]).map(mkl),settings:{...b.settings,...p.settings,layout:'tidy'},view:{...b.view,...p.view}}};
+const norm=p=>{const b=blank();return{nodes:(p.nodes||[]).map(mk),links:(p.links||[]).map(mkl),settings:{...b.settings,...p.settings},view:{...b.view,...p.view}}};
 const rootNode=()=>mk({isTitle:true,x:-85,y:-35,w:170,h:70,text:t('central'),size:20,bold:true,fill:'#1f2937',color:'#ffffff',stroke:'#111827'});
 let renaming=false,nameT=null,cur=null,M=blank(),sel={n:new Set(),l:null},undoS=[],redoS=[],lk='',lt=0,dirty=false,saving=false,st='none',saveT,tool='select',linkFrom=null,clip=null,pc=0,space=false,editing=null,editingLink=null,drag=null,band=null,conn=null,dropT=null,lastClk={id:'',t:0},mouse={x:0,y:0},onMC=null;
 const byId=id=>M.nodes.find(n=>n.id===id);
@@ -233,11 +235,73 @@ function overlay(){let h='';const z=M.view.z;
  return h}
 function render(){const v=M.view,w=$('#world');let h='';for(const l of M.links){const g=geo(l);if(g)h+=linkSVG(l,g,sel.l===l.id)}for(const n of M.nodes)h+=`<g data-n="${n.id}" class="node">${nodeSVG(n,editing===n.id)}</g>`;
  w.innerHTML=h+overlay();const tr=`translate(${v.x} ${v.y}) scale(${v.z})`;w.setAttribute('transform',tr);$('#grid').setAttribute('patternTransform',tr);$('#gridrect').style.display=M.settings.grid?'':'none';
- const z=Math.round(v.z*100)+'%',zl=$('#zl');if(zl)zl.textContent=z;$('#zf').textContent=z;$('#stats').textContent=t('p_stats',M.nodes.length,M.links.length);$('#empty').hidden=!!cur;svg.classList.toggle('tl',tool==='link');svg.classList.toggle('pan',space);refreshTB();posFbar();if(editingLink)$('#editor').hidden=false;else if(!editing)$('#editor').hidden=true}
-function refreshTB(){const on=(a,v)=>document.querySelectorAll(`[data-act="${a}"]`).forEach(b=>b.classList.toggle('on',!!v));on('grid',M.settings.grid);on('snap',M.settings.snap);on('layout',M.settings.layout==='tidy');on('link',tool==='link');on('select',tool==='select')}
+ const z=Math.round(v.z*100)+'%',zl=$('#zl');if(zl)zl.textContent=z;$('#zf').textContent=z;$('#stats').textContent=t('p_stats',M.nodes.length,M.links.length);$('#empty').hidden=!!cur;svg.classList.toggle('tl',tool==='link');svg.classList.toggle('pan',space);refreshTB();posFbar();if(editingLink)$('#editor').hidden=false;else if(!editing)$('#editor').hidden=true;renderMinimap()}
+/* ---------- minimap ---------- */
+const mm=$('#minimap'),mmsvg=$('#mmsvg');
+const MM_PAD=6;
+let mmZoom=1,mmFitScale=1,mmOx=0,mmOy=0,mmBBox=null,mmWinDrag=null,mmResDrag=null,mmPanDrag=null,mmPinned=true;
+function mmVisible(){return localStorage.mMinimap==='1'}
+function setMmVis(v){localStorage.mMinimap=v?'1':'0';mm.hidden=!v||!cur;if(v&&cur)renderMinimap();refreshTB()}
+function renderMinimap(){
+  if(!mmVisible()||!cur||!M.nodes.length){mm.hidden=true;return}
+  mm.hidden=false;
+  const b=bbox();
+  if(!b){mm.hidden=true;return}
+  mmBBox=b;
+  const W=mmsvg.clientWidth||220,H=mmsvg.clientHeight||140;
+  mmsvg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const aw=W-MM_PAD*2,ah=H-MM_PAD*2;
+  mmFitScale=Math.min(aw/b.w,ah/b.h);
+  const s=mmFitScale*mmZoom;
+  mmOx=(W-b.w*s)/2;
+  mmOy=(H-b.h*s)/2;
+  const toMM=(x,y)=>[(x-b.x)*s+mmOx,(y-b.y)*s+mmOy];
+  let h='';
+  for(const l of M.links){const a=byId(l.from),c=byId(l.to);if(a&&c){const p=toMM(a.x+a.w/2,a.y+a.h/2),q=toMM(c.x+c.w/2,c.y+c.h/2);h+=`<line class="mm-link" x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}"/>`}}
+  for(const n of M.nodes){const[x,y]=toMM(n.x,n.y),w=n.w*s,hgt=n.h*s;h+=`<rect class="mm-node" x="${x}" y="${y}" width="${w}" height="${hgt}" rx="${Math.max(1,2*s)}" fill="${esc(n.fill)}"/>`;const fs=Math.max(5,Math.min(16,hgt*.5));if(n.text)h+=`<text class="mm-text" x="${x+w/2}" y="${y+hgt/2}" font-size="${fs}" fill="${esc(n.color)}">${esc(n.text)}</text>`}
+  const r=SR();
+  const vpx=(-M.view.x/M.view.z-b.x)*s+mmOx;
+  const vpy=(-M.view.y/M.view.z-b.y)*s+mmOy;
+  const vpw=r.width/M.view.z*s;
+  const vph=r.height/M.view.z*s;
+  h+=`<rect class="mm-vp" x="${vpx}" y="${vpy}" width="${vpw}" height="${vph}" rx="2"/>`;
+  mmsvg.innerHTML=h;
+  const ze=$('#mmzoom');if(ze)ze.textContent=Math.round(mmZoom*100)+'%'}
+function mmToWorld(cx,cy){
+  if(!mmBBox)return null;
+  const r=mmsvg.getBoundingClientRect();
+  const vbx=((cx-r.left)/r.width)*mmsvg.clientWidth;
+  const vby=((cy-r.top)/r.height)*mmsvg.clientHeight;
+  const s=mmFitScale*mmZoom;
+  return[(vbx-mmOx)/s+mmBBox.x,(vby-mmOy)/s+mmBBox.y]}
+function mmCenterOn(wx,wy){const r=SR();M.view.x=r.width/2-wx*M.view.z;M.view.y=r.height/2-wy*M.view.z;render();viewDirty()}
+function mmZoomBy(f){
+  mmZoom=Math.min(8,Math.max(.1,mmZoom*f));
+  renderMinimap()}
+mmsvg.addEventListener('pointerdown',e=>{
+  if(e.button!==0)return;e.preventDefault();
+  const pt=mmToWorld(e.clientX,e.clientY);if(!pt)return;
+  mmPanDrag=true;mmCenterOn(pt[0],pt[1]);mmsvg.setPointerCapture(e.pointerId)});
+mmsvg.addEventListener('pointermove',e=>{if(!mmPanDrag)return;const pt=mmToWorld(e.clientX,e.clientY);if(pt)mmCenterOn(pt[0],pt[1])});
+const endMmPan=()=>{mmPanDrag=false};
+mmsvg.addEventListener('pointerup',endMmPan);mmsvg.addEventListener('pointercancel',endMmPan);
+mmsvg.addEventListener('wheel',e=>{e.preventDefault();e.stopPropagation();if(e.ctrlKey||e.metaKey){mmZoomBy(Math.exp(-e.deltaY*.0015))}},{passive:false});
+mm.addEventListener('click',e=>{const b=e.target.closest('[data-mm]');if(!b)return;const a=b.dataset.mm;if(a==='zoomin')mmZoomBy(1.25);else if(a==='zoomout')mmZoomBy(1/1.25);else if(a==='reset'){mm.style.width='';mm.style.height='';mm.style.left='';mm.style.top='';mm.style.right='10px';mmPinned=true;mm.classList.remove('unpinned');renderMinimap()}else if(a==='pin'){mmPinned=!mmPinned;mm.classList.toggle('unpinned',!mmPinned);if(mmPinned){mm.style.left='';mm.style.top='';mm.style.right='10px'}renderMinimap()}});
+const mmzoomEl=$('#mmzoom');if(mmzoomEl)mmzoomEl.addEventListener('click',()=>{mmZoom=1;renderMinimap()});
+const mmControls=mm.querySelector('.mm-controls');
+mmControls.addEventListener('pointerdown',e=>{if(mmPinned)return;if(e.target.closest('button'))return;e.preventDefault();const r=mm.getBoundingClientRect();mmWinDrag={x:e.clientX,y:e.clientY,left:r.left,top:r.top};mmControls.setPointerCapture(e.pointerId)});
+mmControls.addEventListener('pointermove',e=>{if(!mmWinDrag)return;mm.style.left=(mmWinDrag.left+e.clientX-mmWinDrag.x)+'px';mm.style.top=(mmWinDrag.top+e.clientY-mmWinDrag.y)+'px';mm.style.right='auto'});
+const endMmWinDrag=()=>{mmWinDrag=null};
+mmControls.addEventListener('pointerup',endMmWinDrag);mmControls.addEventListener('pointercancel',endMmWinDrag);
+const mmResize=mm.querySelector('.mm-resize');
+mmResize.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();if(e.button!==0)return;const r=mm.getBoundingClientRect();mmResDrag={x:e.clientX,y:e.clientY,w:mm.offsetWidth,h:mm.offsetHeight,left:r.left};mmResize.setPointerCapture(e.pointerId)});
+mmResize.addEventListener('pointermove',e=>{if(!mmResDrag)return;const dx=e.clientX-mmResDrag.x,dy=e.clientY-mmResDrag.y;const w=Math.max(120,Math.min(700,mmResDrag.w-dx)),h=Math.max(80,Math.min(600,mmResDrag.h+dy));mm.style.width=w+'px';mm.style.height=h+'px';if(!mmPinned)mm.style.left=(mmResDrag.left+dx)+'px';renderMinimap()});
+const endMmRes=()=>{mmResDrag=null};
+mmResize.addEventListener('pointerup',endMmRes);mmResize.addEventListener('pointercancel',endMmRes);
+function refreshTB(){const on=(a,v)=>document.querySelectorAll(`[data-act="${a}"]`).forEach(b=>b.classList.toggle('on',!!v));on('grid',M.settings.grid);on('snap',M.settings.snap);on('layout',M.settings.layout==='tidy');on('link',tool==='link');on('select',tool==='select');on('minimap',mmVisible())}
 /* ---------- UI build ---------- */
-const MENUS=[['m_file',['new','open','save','saveas','rename','close','-','exportPdf','exportPng','exportSvg','exportJson','import','-','preview']],['m_edit',['undo','redo','-','cut','copy','paste','dup','del','-','selAll','desel']],['m_insert',['root','node','child','childLeft','sibling','link']],['m_view',['props','zoomIn','zoomOut','zoomReset','fit','-','grid','snap','layout','-','full','theme']],['m_help',['shortcuts','about']]];
-const TB=[['undo','↶'],['redo','↷'],'|',['dup','⧉'],['del','✕'],'|',['zoomOut','−'],'z',['zoomIn','+'],['fit','⤢'],'|',['grid','▦'],['snap','⌗'],['layout','⊞'],'|',['props','☰']];
+const MENUS=[['m_file',['new','open','save','saveas','rename','close','-','exportPdf','exportPng','exportSvg','exportJson','import','-','preview']],['m_edit',['undo','redo','-','cut','copy','paste','dup','del','-','selAll','desel']],['m_insert',['root','node','child','childLeft','sibling','link']],['m_view',['props','minimap','zoomIn','zoomOut','zoomReset','fit','-','grid','snap','layout','-','full','theme']],['m_help',['shortcuts','about']]];
+const TB=[['undo','↶'],['redo','↷'],'|',['dup','⧉'],['del','✕'],'|',['zoomOut','−'],'z',['zoomIn','+'],['fit','⤢'],'|',['grid','▦'],['snap','⌗'],['layout','⊞'],['minimap','◫'],'|',['props','☰']];
 const TL=[['select','↖'],['node','＋'],['child','→'],['sibling','↓'],['link','⟷']];
 const AI={left:'<path d="M1 1h12M1 6h8M1 11h11"/>',center:'<path d="M1 1h12M3 6h8M2 11h10"/>',right:'<path d="M1 1h12M5 6h8M2 11h11"/>'};
 function buildUI(){const tip=a=>esc(t('a_'+a)+(shortcutOf(a)?` (${shortcutOf(a)})`:''));
@@ -245,7 +309,7 @@ function buildUI(){const tip=a=>esc(t('a_'+a)+(shortcutOf(a)?` (${shortcutOf(a)}
  $('#toolbar').innerHTML=TB.map(x=>x==='|'?'<i class="sep"></i>':x==='z'?`<button id="zl" data-act="zoomReset" title="${tip('zoomReset')}">100%</button>`:`<button data-act="${x[0]}" title="${tip(x[0])}">${x[1]}</button>`).join('');
  $('#tools').innerHTML=`<button class="ttl" data-act="root" title="${tip('root')}"><b>T</b><small>${t('title')}</small></button><hr>`+TL.map(x=>`<button data-act="${x[0]}" title="${tip(x[0])}">${x[1]}</button>`).join('')+'<hr>'+SH.map(s=>`<button data-shape="${s}" title="${t('s_'+s)}"><i class="shi sh-${s}"></i></button>`).join('');
  $('#theme').title=t('a_theme');$('#theme').textContent=theme==='dark'?'☀':'☾';$('#btnProjects').textContent=t('a_projects');$('#pname').title=t('a_rename');
- $('#empty').innerHTML=`<h2>${t('em_title')}</h2><p class="muted">${t('em_msg')}</p><div><button class="btn pri" data-act="new">${t('a_new')}</button> <button class="btn" data-act="open">${t('a_open')}</button></div>`;
+ $('#empty').innerHTML=`<h2>${t('em_title')}</h2><p class="muted">${t('em_msg')}</p><div><button class="btn pri" data-act="new">${t('a_new')}</button> <button class="btn" data-act="open">${t('a_open')}</button> <button class="btn" data-act="import">${t('a_importProj')}</button></div>`;
  updTitle();setStat(st);hint();render()}
 function updTitle(){document.title=(cur?cur.name+' – ':'')+'Mindly';$('#pname').textContent=cur?cur.name:t('st_none')}
 function setStat(s){st=s;const e=$('#savestat');e.className='stat '+s;e.textContent=t('st_'+s)}
@@ -280,7 +344,7 @@ const recs=()=>{try{return JSON.parse(localStorage.mRecent||'[]')}catch(e){retur
 const setRecs=a=>localStorage.mRecent=JSON.stringify(a.slice(0,8));
 const fmtD=s=>s?new Date(s).toLocaleString('en-GB'):'';
 function resetCur(){cur=null;M=blank();undoS=[];redoS=[];dirty=false;clearTimeout(saveT);sel={n:new Set(),l:null};editing=null;$('#editor').hidden=true;localStorage.removeItem('mLast');setStat('none');updTitle();render();buildPanel()}
-async function openProject(id){if(cur&&dirty&&!(await save(false)))return;try{const r=await api('GET','/projects/'+encodeURIComponent(id));cur={id:r.id,name:r.metadata.name,created:r.metadata.created,modified:r.metadata.modified};M=norm(r.project);layoutAll();if(!r.project.view){const s=SR();M.view={x:s.width/2,y:s.height/2,z:1}}undoS=[];redoS=[];sel={n:new Set(),l:null};dirty=false;tool='select';linkFrom=null;setRecs([id,...recs().filter(x=>x!==id)]);localStorage.mLast=id;setStat('saved');updTitle();hint();render();buildPanel()}catch(e){err(e,'t_loadErr')}}
+async function openProject(id){if(cur&&dirty&&!(await save(false)))return;try{const r=await api('GET','/projects/'+encodeURIComponent(id));cur={id:r.id,name:r.metadata.name,created:r.metadata.created,modified:r.metadata.modified};M=norm(r.project);if(M.settings.layout==='tidy')layoutAll();if(!r.project.view){const s=SR();M.view={x:s.width/2,y:s.height/2,z:1}}undoS=[];redoS=[];sel={n:new Set(),l:null};dirty=false;tool='select';linkFrom=null;setRecs([id,...recs().filter(x=>x!==id)]);localStorage.mLast=id;setStat('saved');updTitle();hint();render();buildPanel()}catch(e){err(e,'t_loadErr')}}
 const newMap=()=>({version:1,nodes:[rootNode()],links:[],settings:{grid:true,snap:false,layout:'tidy'}});
 async function newProject(){const n=await ask(t('d_new'),t('d_name'),t('untitled'));if(n==null)return;try{const r=await api('POST','/projects',{name:n,project:{...newMap(),view:{x:SR().width/2,y:SR().height/2,z:1}}});toast(t('t_created'));await openProject(r.id)}catch(e){err(e,'t_saveErr')}}
 async function syncName(txt){const v=String(txt||'').replace(/\s+/g,' ').trim().slice(0,60);if(!v||!cur||v===cur.name||renaming)return;await save(true);if(!cur||saving)return;renaming=true;
@@ -290,14 +354,14 @@ async function renameProject(id,name){const v=await ask(t('d_rename'),t('d_name'
 async function dupProject(id,name){const v=await ask(t('d_dup'),t('d_name'),t('copyOf',name));if(v==null)return null;try{const r=await api('POST','/projects/'+encodeURIComponent(id)+'/duplicate',{name:v});toast(t('t_dupd'));return r.id}catch(e){err(e,'t_saveErr');return null}}
 async function deleteProject(id,name){if(!(await confirmDlg(t('d_delTitle'),t('d_delMsg',name))))return;try{await api('DELETE','/projects/'+encodeURIComponent(id));setRecs(recs().filter(x=>x!==id));if(cur&&cur.id===id)resetCur();toast(t('t_deleted'))}catch(e){err(e,'t_saveErr')}}
 async function manager(){let list=[];try{list=(await api('GET','/projects')).projects}catch(e){return err(e,'t_loadErr')}
- const box=document.createElement('div');box.innerHTML=`<div class="pmbar"><input id="pq" placeholder="${t('pm_search')}"><select id="ps"><option value="m">${t('pm_mod')}</option><option value="c">${t('pm_cre')}</option><option value="n">${t('pm_name')}</option></select><button class="btn pri" data-r="new">${t('a_new')}</button></div><div id="prec"></div><div id="plist"></div>`;
+ const box=document.createElement('div');box.innerHTML=`<div class="pmbar"><input id="pq" placeholder="${t('pm_search')}"><select id="ps"><option value="m">${t('pm_mod')}</option><option value="c">${t('pm_cre')}</option><option value="n">${t('pm_name')}</option></select><button class="btn pri" data-r="new">${t('a_new')}</button><button class="btn" data-r="import">${t('a_importProj')}</button></div><div id="prec"></div><div id="plist"></div>`;
  modal(t('a_projects'),box,[{l:t('b_close')}],true);
  const draw=()=>{const q=box.querySelector('#pq').value.toLowerCase(),s=box.querySelector('#ps').value;let a=list.filter(p=>p.name.toLowerCase().includes(q));a.sort((x,y)=>s==='n'?x.name.localeCompare(y.name):s==='c'?y.created.localeCompare(x.created):y.modified.localeCompare(x.modified));
   const rc=recs().map(id=>list.find(p=>p.id===id)).filter(Boolean);box.querySelector('#prec').innerHTML=rc.length&&!q?`<small class="muted">${t('pm_recent')}</small><br>`+rc.map(p=>`<button data-r="open" data-id="${esc(p.id)}">${esc(p.name)}</button>`).join(''):'';
   box.querySelector('#plist').innerHTML=a.length?a.map(p=>`<div class="row"><div class="nm"><b data-r="open" data-id="${esc(p.id)}">${esc(p.name)}</b><small>${t('pm_modified')}: ${fmtD(p.modified)} · ${t('pm_created')}: ${fmtD(p.created)}</small></div><button data-r="open" data-id="${esc(p.id)}">${t('b_open')}</button><button data-r="ren" data-id="${esc(p.id)}" title="${t('b_ren')}">✎</button><button data-r="dup" data-id="${esc(p.id)}" title="${t('b_dup')}">⧉</button><button data-r="del" data-id="${esc(p.id)}" title="${t('b_delete')}">✕</button></div>`).join(''):`<p class="muted">${t('pm_none')}</p>`};
  box.querySelector('#pq').oninput=draw;box.querySelector('#ps').onchange=draw;draw();
  box.onclick=async e=>{const b=e.target.closest('[data-r]');if(!b)return;const id=b.dataset.id,p=list.find(x=>x.id===id),r=b.dataset.r;
-  if(r==='open'){closeModal();openProject(id)}else if(r==='new')newProject();else if(r==='ren'){await renameProject(id,p.name);manager()}else if(r==='dup'){const n=await dupProject(id,p.name);manager();void n}else if(r==='del'){await deleteProject(id,p.name);manager()}}}
+  if(r==='open'){closeModal();openProject(id)}else if(r==='new')newProject();else if(r==='import'){$('#file').click()}else if(r==='ren'){await renameProject(id,p.name);manager()}else if(r==='dup'){const n=await dupProject(id,p.name);manager();void n}else if(r==='del'){await deleteProject(id,p.name);manager()}}}
 async function saveAs(){if(!need())return;await save(false);const id=await dupProject(cur.id,cur.name);if(id)await openProject(id)}
 async function closeProject(){if(!cur)return;if(!(await save(false)))return;resetCur();manager()}
 /* ---------- editing operations ---------- */
@@ -393,7 +457,7 @@ const ACT={new:newProject,open:manager,projects:manager,save:()=>need()&&save(fa
  node:()=>{if(!need())return;const r=SR(),i=mouse.x>r.left&&mouse.x<r.right&&mouse.y>r.top&&mouse.y<r.bottom,[x,y]=i?toW(mouse.x,mouse.y):freeSpot(140,56);addNode(x,y)},
  root:()=>{if(!need())return;const o=titleOpts(),r=SR(),i=mouse.x>r.left&&mouse.x<r.right&&mouse.y>r.top&&mouse.y<r.bottom,[x,y]=i?toW(mouse.x,mouse.y):freeSpot(o.w,o.h);addNode(x,y,o)},
  link:()=>{if(!need())return;tool=tool==='link'?'select':'link';linkFrom=null;hint();render()},select:()=>{tool='select';linkFrom=null;hint();render()},
- connect:()=>{},props:()=>{const p=$('#props');p.hidden=!p.hidden;localStorage.mPanel=p.hidden?'0':'1';render()},zoomIn:()=>zoomBy(1.2),zoomOut:()=>zoomBy(1/1.2),zoomReset:()=>cur&&zoomBy(1/M.view.z),fit,fitView:fit,autofit:()=>{const ns=[...sel.n].map(byId).filter(Boolean);if(!ns.length)return toast(t('t_nosel'),'err');snapshot();ns.forEach(n=>{n.manual=false;fitNode(n)});render();markDirty();buildPanel()},layout:toggleLayout,childLeft:()=>child(true),grid:()=>toggle('grid'),snap:()=>toggle('snap'),
+ connect:()=>{},props:()=>{const p=$('#props');p.hidden=!p.hidden;localStorage.mPanel=p.hidden?'0':'1';render()},minimap:()=>setMmVis(!mmVisible()),zoomIn:()=>zoomBy(1.2),zoomOut:()=>zoomBy(1/1.2),zoomReset:()=>cur&&zoomBy(1/M.view.z),fit,fitView:fit,autofit:()=>{const ns=[...sel.n].map(byId).filter(Boolean);if(!ns.length)return toast(t('t_nosel'),'err');snapshot();ns.forEach(n=>{n.manual=false;fitNode(n)});render();markDirty();buildPanel()},layout:toggleLayout,childLeft:()=>child(true),grid:()=>toggle('grid'),snap:()=>toggle('snap'),
  full:()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen(),
  theme:()=>{theme=theme==='dark'?'light':'dark';localStorage.mTheme=theme;document.body.dataset.theme=theme;buildUI()},
  bold:()=>fmt('bold'),italic:()=>fmt('italic'),center:fmtCenter,shortcuts:showShortcuts,shortcuts2:showShortcuts,
@@ -401,7 +465,7 @@ const ACT={new:newProject,open:manager,projects:manager,save:()=>need()&&save(fa
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act],[data-shape],[data-m]');if(!b)return;b.blur();
  if(b.dataset.act)ACT[b.dataset.act]();
  else if(b.dataset.shape){const o=b.dataset.shape==='circle'?{shape:'circle',w:100,h:100}:{shape:b.dataset.shape},[x,y]=freeSpot(o.w||140,o.h||56);addNode(x,y,o)}
- else{const m=MENUS[b.dataset.m],r=b.getBoundingClientRect();popup(m[1].map(a=>a==='-'?'-':{l:t('a_'+a),sc:shortcutOf(a),f:ACT[a],chk:a==='grid'?M.settings.grid:a==='snap'?M.settings.snap:a==='layout'?M.settings.layout==='tidy':false}),r.left,r.bottom)}});
+ else{const m=MENUS[b.dataset.m],r=b.getBoundingClientRect();popup(m[1].map(a=>a==='-'?'-':{l:t('a_'+a),sc:shortcutOf(a),f:ACT[a],chk:a==='grid'?M.settings.grid:a==='snap'?M.settings.snap:a==='layout'?M.settings.layout==='tidy':a==='minimap'?mmVisible():false}),r.left,r.bottom)}});
 document.addEventListener('pointerdown',e=>{if(!e.target.closest('#ctx'))hidePop()});
 /* ---------- canvas interaction ---------- */
 function subtree(ids){const out=new Set(ids),st=[...ids];while(st.length){const i=st.pop();for(const l of M.links)if(l.from===i&&!out.has(l.to)&&byId(l.to)){out.add(l.to);st.push(l.to)}}return out}
