@@ -1,532 +1,241 @@
 #!/usr/bin/env python3
-import json
-import mimetypes
-import os
-import platform
-import re
-import shutil
-import subprocess
-import sys
-import threading
-import time
-import uuid
-import webbrowser
+"""Mindly - local server (standard library only, localhost only)."""
+import json, os, re, shutil, sys, threading, uuid, webbrowser
+sys.dont_write_bytecode = True
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, unquote, parse_qs, quote
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from urllib.parse import urlparse, unquote
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DOCS_DIR = os.path.join(BASE_DIR, "documents")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-HOST = "127.0.0.1"
-PORT = 8756
-VALID_TYPES = {"note"}
-META_FILE = "document.json"
-ASSETS_DIR = "assets"
-APP_TRASH_DIR = os.path.join(BASE_DIR, ".trash")
+BASE = os.path.dirname(os.path.abspath(__file__))
+SITE = os.path.join(BASE, 'website')
+PROJ = os.path.join(BASE, 'projects')
+HOST, PORT = '127.0.0.1', 8765
+MAXB = 25 * 1024 * 1024
+BAD = r'[<>:"/\\|?*\x00-\x1f]'
+RESERVED = re.compile(r'^(con|prn|aux|nul|com[0-9]|lpt[0-9])$', re.I)
 
-_lock = threading.RLock()
-_index = {}
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+class Err(Exception):
+    def __init__(self, code, msg):
+        self.code, self.msg = code, msg
 
-def strip_html(html):
-    text = re.sub(r"<[^>]+>", " ", html or "")
-    text = re.sub(r"&nbsp;", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
 
-def sanitize_name(name):
-    name = (name or "").strip()
-    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", name)
-    name = re.sub(r"\s+", " ", name).strip(" .")
-    if not name:
-        name = "Untitled"
-    return name[:120]
+def now():
+    return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
-def unique_folder_name(base, ignore=None):
-    candidate = base
-    i = 1
-    while True:
-        path = os.path.join(DOCS_DIR, candidate)
-        if not os.path.isdir(path) or candidate == ignore:
-            return candidate
+
+def clean(name):
+    if not isinstance(name, str):
+        raise Err(400, 'invalid_name')
+    n = re.sub(BAD, '', name).strip()[:60].rstrip('. ')
+    if not n or RESERVED.match(n.split('.')[0].strip()):
+        raise Err(400, 'invalid_name')
+    return n
+
+
+def unique(base):
+    n, i = base, 2
+    while os.path.exists(os.path.join(PROJ, n)):
+        n = '%s_%d' % (base, i)
         i += 1
-        candidate = f"{base} ({i})"
+    return n
 
-def ensure_docs_dir():
-    os.makedirs(DOCS_DIR, exist_ok=True)
 
-def build_index():
-    ensure_docs_dir()
-    idx = {}
-    for entry in sorted(os.listdir(DOCS_DIR)):
-        folder = os.path.join(DOCS_DIR, entry)
-        meta_path = os.path.join(folder, META_FILE)
-        if os.path.isdir(folder) and os.path.isfile(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                doc_id = data.get("id")
-                if doc_id:
-                    idx[doc_id] = entry
-            except Exception:
-                continue
-    return idx
+def pdir(pid):
+    if not isinstance(pid, str) or not pid or pid in ('.', '..') or re.search(BAD, pid):
+        raise Err(400, 'invalid_name')
+    p = os.path.realpath(os.path.join(PROJ, pid))
+    if os.path.normcase(os.path.dirname(p)) != os.path.normcase(os.path.realpath(PROJ)) or not os.path.isdir(p):
+        raise Err(404, 'not_found')
+    return p
 
-def load_doc(doc_id):
-    with _lock:
-        folder = _index.get(doc_id)
-        if not folder:
-            return None, None
-        path = os.path.join(DOCS_DIR, folder, META_FILE)
-        if not os.path.isfile(path):
-            return None, None
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data, folder
 
-def save_doc(data, folder):
-    path = os.path.join(DOCS_DIR, folder, META_FILE)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+def jread(p, f):
+    with open(os.path.join(p, f), encoding='utf-8') as fh:
+        return json.load(fh)
 
-def public_meta(data):
-    preview = strip_html(data.get("content", ""))[:160]
-    return {
-        "id": data.get("id"),
-        "title": data.get("title", "Untitled"),
-        "type": data.get("type", "note"),
-        "favorite": bool(data.get("favorite", False)),
-        "tags": data.get("tags", []),
-        "preview": preview,
-        "createdAt": data.get("createdAt"),
-        "updatedAt": data.get("updatedAt"),
-    }
 
-def all_docs_sorted():
-    with _lock:
-        docs = []
-        for doc_id, folder in list(_index.items()):
-            data, _ = load_doc(doc_id)
-            if data:
-                docs.append(data)
-    docs.sort(key=lambda d: d.get("updatedAt", ""), reverse=True)
-    return docs
+def jwrite(p, f, o):
+    tmp = os.path.join(p, f + '.tmp')
+    with open(tmp, 'w', encoding='utf-8') as fh:
+        json.dump(o, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, os.path.join(p, f))
 
-class DoclyHandler(BaseHTTPRequestHandler):
-    server_version = "Docly/1.0"
 
-    def log_message(self, fmt, *args):
+def check(p):
+    if not isinstance(p, dict) or not isinstance(p.get('nodes'), list) or not isinstance(p.get('links'), list):
+        raise Err(400, 'invalid_project')
+    if len(p['nodes']) > 20000 or len(p['links']) > 50000 or not all(isinstance(x, dict) for x in p['nodes'] + p['links']):
+        raise Err(400, 'invalid_project')
+    out = {'version': 1, 'nodes': p['nodes'], 'links': p['links'],
+           'settings': p['settings'] if isinstance(p.get('settings'), dict) else {}}
+    if isinstance(p.get('view'), dict):
+        out['view'] = p['view']
+    return out
+
+
+def listing():
+    out = []
+    for d in os.listdir(PROJ):
+        p = os.path.join(PROJ, d)
+        try:
+            if os.path.isdir(p):
+                m = jread(p, 'metadata.json')
+                out.append({'id': d, 'name': m.get('name', d), 'created': m.get('created', ''), 'modified': m.get('modified', '')})
+        except Exception:
+            pass
+    return out
+
+
+def create(name, proj):
+    name = re.sub(r'[\x00-\x1f]', '', str(name or '')).strip()[:60]
+    folder = unique(clean(name))
+    p = os.path.join(PROJ, folder)
+    os.makedirs(p)
+    t = now()
+    meta = {'id': uuid.uuid4().hex, 'name': name, 'created': t, 'modified': t, 'version': 1, 'app': 'Mindly'}
+    jwrite(p, 'project.json', proj)
+    jwrite(p, 'metadata.json', meta)
+    return {'id': folder, 'metadata': meta, 'project': proj}
+
+
+def route(m, parts, body):
+    if not parts:
+        if m == 'GET':
+            return 200, {'projects': listing()}
+        if m == 'POST':
+            proj = check(body['project']) if 'project' in body else {'version': 1, 'nodes': [], 'links': [], 'settings': {}}
+            return 201, create(body.get('name'), proj)
+    elif len(parts) == 1:
+        p = pdir(parts[0])
+        if m == 'GET':
+            return 200, {'id': parts[0], 'metadata': jread(p, 'metadata.json'), 'project': jread(p, 'project.json')}
+        if m == 'PUT':
+            proj = check(body.get('project'))
+            jwrite(p, 'project.json', proj)
+            meta = jread(p, 'metadata.json')
+            meta['modified'] = now()
+            jwrite(p, 'metadata.json', meta)
+            return 200, {'modified': meta['modified']}
+        if m == 'DELETE':
+            shutil.rmtree(p)
+            return 200, {'ok': True}
+    elif len(parts) == 2 and m == 'POST' and parts[1] in ('rename', 'duplicate'):
+        p = pdir(parts[0])
+        name = re.sub(r'[\x00-\x1f]', '', str(body.get('name') or '')).strip()[:60]
+        folder = clean(name)
+        meta = jread(p, 'metadata.json')
+        if parts[1] == 'rename':
+            new = parts[0]
+            if os.path.normcase(folder) != os.path.normcase(parts[0]):
+                new = unique(folder)
+                os.rename(p, os.path.join(PROJ, new))
+            p = os.path.join(PROJ, new)
+            meta['name'] = name
+            meta['modified'] = now()
+            jwrite(p, 'metadata.json', meta)
+            return 200, {'id': new, 'metadata': meta}
+        new = unique(folder)
+        np_ = os.path.join(PROJ, new)
+        shutil.copytree(p, np_)
+        t = now()
+        meta.update({'id': uuid.uuid4().hex, 'name': name, 'created': t, 'modified': t})
+        jwrite(np_, 'metadata.json', meta)
+        return 201, {'id': new, 'metadata': meta}
+    raise Err(404, 'not_found')
+
+
+class H(SimpleHTTPRequestHandler):
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html'}
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, directory=SITE, **k)
+
+    def log_message(self, *a):
         pass
 
-    def _send_json(self, status, payload):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
+
+    def send_json(self, code, obj):
+        b = json.dumps(obj, ensure_ascii=False).encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(b)))
         self.end_headers()
-        self.wfile.write(body)
+        self.wfile.write(b)
 
-    def _send_error_json(self, status, message):
-        self._send_json(status, {"error": message})
-
-    def _read_json_body(self):
-        length = int(self.headers.get("Content-Length", 0) or 0)
-        if length == 0:
-            return {}
-        raw = self.rfile.read(length)
+    def api(self, method):
         try:
-            return json.loads(raw.decode("utf-8"))
+            if self.headers.get('Host', '').split(':')[0] not in ('127.0.0.1', 'localhost'):
+                raise Err(403, 'forbidden')
+            parts = [unquote(x) for x in urlparse(self.path).path.split('/') if x]
+            if len(parts) < 2 or parts[1] != 'projects':
+                raise Err(404, 'not_found')
+            body = {}
+            if method in ('POST', 'PUT'):
+                n = int(self.headers.get('Content-Length') or 0)
+                if n > MAXB:
+                    raise Err(413, 'too_large')
+                try:
+                    body = json.loads(self.rfile.read(n) or b'{}')
+                except ValueError:
+                    raise Err(400, 'bad_json')
+                if not isinstance(body, dict):
+                    raise Err(400, 'bad_json')
+            code, obj = route(method, parts[2:], body)
+        except Err as e:
+            code, obj = e.code, {'error': e.msg}
         except Exception:
-            return None
-
-    def _send_file(self, path, download_name=None):
-        if not os.path.isfile(path):
-            self._send_error_json(404, "File not found")
-            return
-        ctype, _ = mimetypes.guess_type(path)
-        ctype = ctype or "application/octet-stream"
-        with open(path, "rb") as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        if download_name:
-            self.send_header("Content-Disposition", f'inline; filename="{download_name}"')
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _serve_static(self, rel_path):
-        rel_path = rel_path.lstrip("/")
-        if rel_path == "":
-            rel_path = "index.html"
-        full = os.path.normpath(os.path.join(STATIC_DIR, rel_path))
-        if not full.startswith(os.path.normpath(STATIC_DIR)):
-            self._send_error_json(403, "Forbidden")
-            return
-        if not os.path.isfile(full):
-            full = os.path.join(STATIC_DIR, "index.html")
-        self._send_file(full)
+            code, obj = 500, {'error': 'error'}
+        self.send_json(code, obj)
 
     def do_GET(self):
-        parsed = urlparse(self.path)
-        path = unquote(parsed.path)
-        qs = parse_qs(parsed.query)
-
-        if path == "/api/documents":
-            with _lock:
-                docs = [public_meta(d) for d in all_docs_sorted()]
-            self._send_json(200, {"documents": docs})
-            return
-
-        if path == "/api/search":
-            query = (qs.get("q", [""])[0] or "").strip().lower()
-            with _lock:
-                docs = all_docs_sorted()
-            if not query:
-                results = [public_meta(d) for d in docs]
-            else:
-                results = []
-                for d in docs:
-                    haystack = " ".join([
-                        d.get("title", ""),
-                        strip_html(d.get("content", "")),
-                        " ".join(d.get("tags", [])),
-                    ]).lower()
-                    if query in haystack:
-                        results.append(public_meta(d))
-            self._send_json(200, {"documents": results})
-            return
-
-        m = re.match(r"^/api/documents/([^/]+)/assets/([^/]+)$", path)
-        if m:
-            doc_id, filename = unquote(m.group(1)), unquote(m.group(2))
-            with _lock:
-                _, folder = load_doc(doc_id)
-            if not folder:
-                self._send_error_json(404, "Document not found")
-                return
-            asset_path = os.path.join(DOCS_DIR, folder, ASSETS_DIR, filename)
-            asset_path = os.path.normpath(asset_path)
-            if not asset_path.startswith(os.path.normpath(os.path.join(DOCS_DIR, folder, ASSETS_DIR))):
-                self._send_error_json(403, "Forbidden")
-                return
-            self._send_file(asset_path, download_name=filename)
-            return
-
-        m = re.match(r"^/api/documents/([^/]+)$", path)
-        if m:
-            doc_id = unquote(m.group(1))
-            with _lock:
-                data, _ = load_doc(doc_id)
-            if not data:
-                self._send_error_json(404, "Document not found")
-                return
-            self._send_json(200, data)
-            return
-
-        if path.startswith("/api/"):
-            self._send_error_json(404, "Endpoint not found")
-            return
-
-        self._serve_static(path)
+        if self.path.startswith('/api/'):
+            self.api('GET')
+        else:
+            super().do_GET()
 
     def do_POST(self):
-        parsed = urlparse(self.path)
-        path = unquote(parsed.path)
-
-        if path == "/api/documents":
-            body = self._read_json_body()
-            if body is None:
-                self._send_error_json(400, "Invalid JSON")
-                return
-            title = sanitize_name(body.get("title") or "Untitled")
-            doc_type = body.get("type", "note")
-            if doc_type not in VALID_TYPES:
-                self._send_error_json(400, "Invalid document type")
-                return
-            with _lock:
-                ensure_docs_dir()
-                folder = unique_folder_name(title)
-                folder_path = os.path.join(DOCS_DIR, folder)
-                os.makedirs(os.path.join(folder_path, ASSETS_DIR), exist_ok=True)
-                doc_id = str(uuid.uuid4())
-                ts = now_iso()
-                data = {
-                    "id": doc_id,
-                    "title": title,
-                    "type": doc_type,
-                    "content": "",
-                    "tags": [],
-                    "favorite": False,
-                    "createdAt": ts,
-                    "updatedAt": ts,
-                }
-                save_doc(data, folder)
-                _index[doc_id] = folder
-            self._send_json(201, data)
-            return
-
-        m = re.match(r"^/api/documents/([^/]+)/assets$", path)
-        if m:
-            doc_id = unquote(m.group(1))
-            with _lock:
-                _, folder = load_doc(doc_id)
-            if not folder:
-                self._send_error_json(404, "Document not found")
-                return
-            self._handle_asset_upload(doc_id, folder)
-            return
-
-        self._send_error_json(404, "Endpoint not found")
-
-    def _handle_asset_upload(self, doc_id, folder):
-        ctype = self.headers.get("Content-Type", "")
-        m = re.search(r"boundary=(.+)", ctype)
-        length = int(self.headers.get("Content-Length", 0) or 0)
-        if "multipart/form-data" not in ctype or not m or length == 0:
-            self._send_error_json(400, "Invalid upload: expected multipart/form-data")
-            return
-        boundary = m.group(1).strip('"').encode("utf-8")
-        raw = self.rfile.read(length)
-        filename, filedata = parse_multipart_file(raw, boundary)
-        if filedata is None:
-            self._send_error_json(400, "No file found in upload")
-            return
-        safe_name = sanitize_name(filename or "image")
-        base, ext = os.path.splitext(safe_name)
-        unique_name = f"{base}-{uuid.uuid4().hex[:8]}{ext or '.png'}"
-        assets_dir = os.path.join(DOCS_DIR, folder, ASSETS_DIR)
-        os.makedirs(assets_dir, exist_ok=True)
-        dest = os.path.join(assets_dir, unique_name)
-        with open(dest, "wb") as f:
-            f.write(filedata)
-        url = f"/api/documents/{doc_id}/assets/{unique_name}"
-        self._send_json(201, {"url": url, "filename": unique_name})
+        self.api('POST') if self.path.startswith('/api/') else self.send_error(404)
 
     def do_PUT(self):
-        parsed = urlparse(self.path)
-        path = unquote(parsed.path)
-
-        m = re.match(r"^/api/documents/([^/]+)/rename$", path)
-        if m:
-            doc_id = unquote(m.group(1))
-            body = self._read_json_body()
-            if body is None or not body.get("title", "").strip():
-                self._send_error_json(400, "Missing title")
-                return
-            with _lock:
-                data, folder = load_doc(doc_id)
-                if not data:
-                    self._send_error_json(404, "Document not found")
-                    return
-                new_title = sanitize_name(body["title"])
-                new_folder = new_title
-                if new_folder != folder:
-                    new_folder = unique_folder_name(new_title, ignore=folder)
-                    old_path = os.path.join(DOCS_DIR, folder)
-                    new_path = os.path.join(DOCS_DIR, new_folder)
-                    os.rename(old_path, new_path)
-                    _index[doc_id] = new_folder
-                    folder = new_folder
-                data["title"] = new_title
-                data["updatedAt"] = now_iso()
-                save_doc(data, folder)
-            self._send_json(200, data)
-            return
-
-        m = re.match(r"^/api/documents/([^/]+)/favorite$", path)
-        if m:
-            self._toggle_field(unquote(m.group(1)), "favorite")
-            return
-
-        m = re.match(r"^/api/documents/([^/]+)$", path)
-        if m:
-            doc_id = unquote(m.group(1))
-            body = self._read_json_body()
-            if body is None:
-                self._send_error_json(400, "Invalid JSON")
-                return
-            with _lock:
-                data, folder = load_doc(doc_id)
-                if not data:
-                    self._send_error_json(404, "Document not found")
-                    return
-                if "content" in body:
-                    data["content"] = body["content"]
-                if "tags" in body and isinstance(body["tags"], list):
-                    data["tags"] = [str(t)[:40] for t in body["tags"]][:30]
-                data["updatedAt"] = now_iso()
-                save_doc(data, folder)
-            self._send_json(200, data)
-            return
-
-        self._send_error_json(404, "Endpoint not found")
-
-    def _toggle_field(self, doc_id, field):
-        with _lock:
-            data, folder = load_doc(doc_id)
-            if not data:
-                self._send_error_json(404, "Document not found")
-                return
-            data[field] = not bool(data.get(field, False))
-            data["updatedAt"] = now_iso()
-            save_doc(data, folder)
-        self._send_json(200, data)
+        self.api('PUT') if self.path.startswith('/api/') else self.send_error(404)
 
     def do_DELETE(self):
-        parsed = urlparse(self.path)
-        path = unquote(parsed.path)
-        m = re.match(r"^/api/documents/([^/]+)$", path)
-        if m:
-            doc_id = unquote(m.group(1))
-            with _lock:
-                data, folder = load_doc(doc_id)
-                if not data:
-                    self._send_error_json(404, "Document not found")
-                    return
-                folder_path = os.path.join(DOCS_DIR, folder)
-                send_to_trash(folder_path)
-                _index.pop(doc_id, None)
-            self._send_json(200, {"ok": True})
-            return
-        self._send_error_json(404, "Endpoint not found")
+        self.api('DELETE') if self.path.startswith('/api/') else self.send_error(404)
 
-def _trash_windows(path):
-    import ctypes
-    from ctypes import wintypes
 
-    class SHFILEOPSTRUCTW(ctypes.Structure):
-        _fields_ = [
-            ("hwnd", wintypes.HWND),
-            ("wFunc", wintypes.UINT),
-            ("pFrom", wintypes.LPCWSTR),
-            ("pTo", wintypes.LPCWSTR),
-            ("fFlags", ctypes.c_uint),
-            ("fAnyOperationsAborted", wintypes.BOOL),
-            ("hNameMappings", ctypes.c_void_p),
-            ("lpszProgressTitle", wintypes.LPCWSTR),
-        ]
+def open_browser(url):
+    """Open the browser only once the server is actually accepting connections."""
+    import socket, time
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((HOST, PORT), timeout=0.5):
+                webbrowser.open(url)
+                return
+        except OSError:
+            time.sleep(0.15)
 
-    FO_DELETE = 3
-    FOF_ALLOWUNDO = 0x40
-    FOF_NOCONFIRMATION = 0x10
-    FOF_SILENT = 0x4
-    FOF_NOERRORUI = 0x400
 
-    op = SHFILEOPSTRUCTW()
-    op.hwnd = None
-    op.wFunc = FO_DELETE
-    op.pFrom = path + "\0"
-    op.pTo = None
-    op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
-    result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
-    if result != 0:
-        raise OSError(f"SHFileOperationW returned code {result}")
-
-def _trash_macos(path):
-    escaped = path.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'tell application "Finder" to delete POSIX file "{escaped}"'
-    subprocess.run(["osascript", "-e", script], check=True,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-def _trash_linux(path):
-    home = os.path.expanduser("~")
-    data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
-    trash_files = os.path.join(data_home, "Trash", "files")
-    trash_info = os.path.join(data_home, "Trash", "info")
-    os.makedirs(trash_files, exist_ok=True)
-    os.makedirs(trash_info, exist_ok=True)
-
-    base = os.path.basename(path.rstrip(os.sep))
-    dest_name = base
-    i = 1
-    while os.path.exists(os.path.join(trash_files, dest_name)) or \
-            os.path.exists(os.path.join(trash_info, dest_name + ".trashinfo")):
-        i += 1
-        dest_name = f"{base} ({i})"
-
-    shutil.move(path, os.path.join(trash_files, dest_name))
-    info = (
-        "[Trash Info]\n"
-        f"Path={quote(path)}\n"
-        f"DeletionDate={datetime.now().strftime('%Y-%m-%dT%H:%M:%S')}\n"
-    )
-    with open(os.path.join(trash_info, dest_name + ".trashinfo"), "w", encoding="utf-8") as f:
-        f.write(info)
-
-def _trash_local_fallback(path):
-    os.makedirs(APP_TRASH_DIR, exist_ok=True)
-    base = os.path.basename(path.rstrip(os.sep))
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = os.path.join(APP_TRASH_DIR, f"{stamp} - {base}")
-    shutil.move(path, dest)
-
-def send_to_trash(path):
-    system = platform.system()
+if __name__ == '__main__':
+    os.makedirs(PROJ, exist_ok=True)
+    url = 'http://%s:%d/' % (HOST, PORT)
     try:
-        if system == "Windows":
-            _trash_windows(path)
-        elif system == "Darwin":
-            _trash_macos(path)
-        elif system == "Linux":
-            _trash_linux(path)
-        else:
-            _trash_local_fallback(path)
-    except Exception:
-        _trash_local_fallback(path)
-
-def parse_multipart_file(raw, boundary):
-    delimiter = b"--" + boundary
-    parts = raw.split(delimiter)
-    for part in parts:
-        part = part.strip(b"\r\n")
-        if not part or part == b"--":
-            continue
-        if b"\r\n\r\n" not in part:
-            continue
-        headers_raw, content = part.split(b"\r\n\r\n", 1)
-        headers_text = headers_raw.decode("utf-8", errors="ignore")
-        if "filename=" not in headers_text:
-            continue
-        fm = re.search(r'filename="([^"]*)"', headers_text)
-        filename = fm.group(1) if fm else "file"
-        content = content.rstrip(b"\r\n")
-        return filename, content
-    return None, None
-
-def open_browser_delayed():
-    time.sleep(0.8)
+        srv = ThreadingHTTPServer((HOST, PORT), H)
+    except OSError:
+        print('Port %d is busy: another copy of Mindly is already running.' % PORT)
+        print('Close its window (or the old python.exe) and start this one again.')
+        print('This copy lives in: ' + BASE)
+        webbrowser.open(url)
+        sys.exit(1)
+    # Open the website automatically as soon as the server is ready.
+    threading.Thread(target=open_browser, args=(url,), daemon=True).start()
+    print('Mindly -> ' + url)
+    print('Folder: ' + BASE)
     try:
-        opened = webbrowser.open(f"http://{HOST}:{PORT}")
-        if not opened:
-            print(f"  (unable to open browser automatically: open manually http://{HOST}:{PORT})")
-    except Exception:
-        pass
-
-def main():
-    global _index
-    ensure_docs_dir()
-    _index = build_index()
-    server = ThreadingHTTPServer((HOST, PORT), DoclyHandler)
-    print("=" * 52)
-    print("  Docly is running")
-    print(f"  Open browser at: http://{HOST}:{PORT}")
-    print(f"  Documents saved in: {DOCS_DIR}")
-    print("  Press CTRL+C to stop the server")
-    print("=" * 52)
-    if "--no-browser" not in sys.argv:
-        threading.Thread(target=open_browser_delayed, daemon=True).start()
-    try:
-        server.serve_forever()
+        srv.serve_forever()
     except KeyboardInterrupt:
-        print("\nDocly stopped.")
-        server.shutdown()
-
-if __name__ == "__main__":
-    main()
+        pass
