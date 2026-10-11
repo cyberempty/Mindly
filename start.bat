@@ -16,6 +16,5 @@ if not defined PY (
   exit /b 1
 )
 if not exist "projects" mkdir "projects"
-echo Mindly is running at http://127.0.0.1:8765 - close this window to stop the server.
 %PY% server.py --open
 if errorlevel 1 pause

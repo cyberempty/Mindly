@@ -33,10 +33,20 @@ def clean(name):
     return n
 
 
+SUFFIX = '_Mindly'
+
+
+def folder_name(name):
+    """Project folder name: NAME_Mindly (suffix always last, capital M)."""
+    base = clean(re.sub(r'(_mindly)+$', '', str(name or '').strip(), flags=re.I))
+    return base[:60 - len(SUFFIX)].rstrip('. ') + SUFFIX
+
+
 def unique(base):
     n, i = base, 2
+    stem = base[:-len(SUFFIX)] if base.endswith(SUFFIX) else base
     while os.path.exists(os.path.join(PROJ, n)):
-        n = '%s_%d' % (base, i)
+        n = '%s_%d%s' % (stem, i, SUFFIX)  # suffix stays last: NAME_2_Mindly
         i += 1
     return n
 
@@ -89,7 +99,7 @@ def listing():
 
 def create(name, proj):
     name = re.sub(r'[\x00-\x1f]', '', str(name or '')).strip()[:60]
-    folder = unique(clean(name))
+    folder = unique(folder_name(name))
     p = os.path.join(PROJ, folder)
     os.makedirs(p)
     t = now()
@@ -185,7 +195,7 @@ def route(m, parts, body):
     elif len(parts) == 2 and m == 'POST' and parts[1] in ('rename', 'duplicate'):
         p = pdir(parts[0])
         name = re.sub(r'[\x00-\x1f]', '', str(body.get('name') or '')).strip()[:60]
-        folder = clean(name)
+        folder = folder_name(name)
         meta = jread(p, 'metadata.json')
         if parts[1] == 'rename':
             new = parts[0]

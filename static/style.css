@@ -1673,3 +1673,66 @@ kbd {
 #cpop .cp-pal button:hover {
   transform: scale(1.15);
 }
+
+/* Home help dropdown */
+#home .home-menu {
+  position: fixed;
+  top: 58px;
+  right: 16px;
+  z-index: 60;
+  min-width: 230px;
+  background: var(--surface, var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+  animation: pop 0.12s ease;
+}
+#home .home-menu[hidden] {
+  display: none;
+}
+#home .home-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#home .home-menu button:hover {
+  background: var(--toolbar);
+}
+#home .home-menu svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex: none;
+}
+/* Program info / License dialogs */
+.pinfo .r {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 14px;
+}
+.pinfo .r span:first-child {
+  color: var(--muted);
+}
+.lic {
+  margin: 0 0 12px;
+  padding: 14px;
+  background: var(--toolbar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: 12px/1.45 Consolas, monospace;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 48vh;
+}
+.lic-more {
+  margin: 0;
+  font-size: 13px;
+}

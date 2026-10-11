@@ -78,7 +78,7 @@ a_italic|Italic
 a_center|Center text
 a_shortcuts|Keyboard shortcuts
 a_shortcuts2|Quick commands list
-a_about|About Mindly
+a_about|Program info
 a_projects|Projects
 a_connect|Connect
 a_props|Properties
@@ -215,7 +215,23 @@ hm_all|All
 hm_recent|Recent
 hm_fav|Favorites
 hm_search|Search
-hm_help|Keyboard shortcuts
+hm_help|Help
+hm_info|Program info
+hm_license|License
+hm_shortcuts|Keyboard shortcuts
+pi_name|Name
+pi_version|Version
+pi_what|What it is
+pi_where|Where data lives
+pi_req|Requirements
+pi_export|Export
+pi_whatV|A local editor for mind maps and diagrams.
+pi_whereV|Your mind maps are saved as folders inside the "projects" folder next to the program. Nothing leaves your computer.
+pi_reqV|Python 3 only, no other dependencies.
+pi_exportV|SVG, PNG, PDF and JSON backup (File > Export). JSON files are named NAME_Mindly.json.
+lic_more|Read more about the MIT license:
+a_msRight|Select multiple nodes (rectangle)
+a_license|License
 hm_view|Switch grid / list view
 hm_star|Add to favorites
 hm_nofav|No favorite mind maps yet.
@@ -397,6 +413,7 @@ const SC = [
   ['g_sel', 'Drag onto block', '', 'a_reparent'],
   ['g_sel', 'Shift + resize', '', 'a_resizeProp'],
   ['g_sel', 'Alt + drag', '', 'a_moveAlone'],
+  ['g_sel', 'Right-click + drag', '', 'a_msRight'],
   ['g_sel', 'Shift + click', '', 'a_msShift'],
   ['g_sel', 'Ctrl + click', '', 'a_msCtrl'],
   ['g_fmt', 'Ctrl+B', 'bold'],
@@ -662,11 +679,13 @@ function overlay() {
     if (sel.n.size === 1 && !editing && !conn) {
       const n = byId([...sel.n][0]);
       if (n)
-        for (const [sx, g] of [
-          [n.x + n.w + 22 / z, '→'],
-          [n.x - 22 / z, '←'],
+        for (const [sx, sy, g, d] of [
+          [n.x + n.w + 22 / z, n.y + n.h / 2 - 15 / z, '→', 'link'],
+          [n.x + n.w + 22 / z, n.y + n.h / 2 + 15 / z, '+', 'add'],
+          [n.x - 22 / z, n.y + n.h / 2 - 15 / z, '←', 'link'],
+          [n.x - 22 / z, n.y + n.h / 2 + 15 / z, '+', 'add'],
         ])
-          h += `<circle class="cn" data-c="1" cx="${sx}" cy="${n.y + n.h / 2}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${n.y + n.h / 2}" font-size="${14 / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
+          h += `<circle class="cn" data-c="${d}" cx="${sx}" cy="${sy}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${sy}" font-size="${14 / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
     }
   }
   if (conn) {
@@ -1021,7 +1040,7 @@ const MENUS = [
       'theme',
     ],
   ],
-  ['m_help', ['shortcuts', 'about']],
+  ['m_help', ['shortcuts', 'about', 'license']],
 ];
 const TB = [
   ['undo', '↶'],
@@ -1261,6 +1280,43 @@ function deleteChoiceDlg(name) {
       () => fin(null),
     );
   });
+}
+function showInfo() {
+  const r = (k, v) => `<div class="r"><span>${t(k)}</span><span>${v}</span></div>`;
+  modal(
+    t('hm_info'),
+    `<div class="pinfo">${r('pi_name', 'Mindly')}${r('pi_version', '5.0')}${r('pi_what', t('pi_whatV'))}${r('pi_where', esc(t('pi_whereV')))}${r('pi_req', t('pi_reqV'))}${r('pi_export', t('pi_exportV'))}</div>`,
+    [{ l: t('b_close'), c: 'pri' }],
+  );
+}
+const LICENSE_TXT = `MIT License
+
+Copyright (c) 2026 Mindly
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+function showLicense() {
+  modal(
+    t('a_license'),
+    `<pre class="lic">${esc(LICENSE_TXT)}</pre><p class="lic-more">${t('lic_more')} <a href="https://opensource.org/license/mit" target="_blank" rel="noopener">https://opensource.org/license/mit</a></p>`,
+    [{ l: t('b_close'), c: 'pri' }],
+    true,
+  );
 }
 function showShortcuts() {
   const g = {};
@@ -1706,6 +1762,9 @@ const IC = {
   search:
     'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
   help: 'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z',
+  info: 'M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z',
+  doc: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z',
+  kbd: 'M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z',
   list: 'M4 14h4v-4H4v4zm0 5h4v-4H4v4zM4 9h4V5H4v4zm5 5h12v-4H9v4zm0 5h12v-4H9v4zM9 5v4h12V5H9z',
   grid: 'M3 3v8h8V3H3zm6 6H5V5h4v4zm-6 4v8h8v-8H3zm6 6H5v-4h4v4zm4-16v8h8V3h-8zm6 6h-4V5h4v4zm-6 4v8h8v-8h-8zm6 6h-4v-4h4v4z',
   plus: 'M22 8h4v14h14v4H26v14h-4V26H8v-4h14z',
@@ -1737,7 +1796,12 @@ function buildHome() {
         <label class="search-box home-search">${svgIc(IC.search, '0 0 24 24', 'search-icon')}<input id="hq" type="text" placeholder="${t('hm_search')}" value="${esc(H.q)}" autocomplete="off" spellcheck="false"></label>
         <div class="home-header-right"></div>
       </div>
-      <button class="icon-btn home-help-btn" data-act="shortcuts" title="${t('hm_help')}">${svgIc(IC.help)}</button>
+      <button class="icon-btn home-help-btn" data-hm="help" title="${t('hm_help')}">${svgIc(IC.help)}</button>
+      <div class="home-menu" id="hmenu" hidden>
+        <button data-hm-act="about">${svgIc(IC.info)}<span>${t('hm_info')}</span></button>
+        <button data-hm-act="license">${svgIc(IC.doc)}<span>${t('hm_license')}</span></button>
+        <button data-hm-act="shortcuts">${svgIc(IC.kbd)}<span>${t('hm_shortcuts')}</span></button>
+      </div>
       <button class="icon-btn home-view-toggle" data-hm="view" title="${t('hm_view')}">${svgIc(IC.list, '0 0 24 24', 'ic-list')}${svgIc(IC.grid, '0 0 24 24', 'ic-grid')}</button>
       <button class="theme-fab" data-act="theme" title="${t('a_theme')}">${theme === 'dark' ? '☾' : '☀'}</button>
       <div class="home-body">
@@ -1820,6 +1884,10 @@ $('#home').addEventListener('input', (e) => {
   drawHome();
 });
 function homeClick(e) {
+  const mi = e.target.closest('[data-hm-act]'),
+    menu = $('#hmenu');
+  if (menu) menu.hidden = mi || !e.target.closest('[data-hm="help"]') ? true : !menu.hidden;
+  if (mi) return ACT[mi.dataset.hmAct]();
   const chip = e.target.closest('[data-f]'),
     hm = e.target.closest('[data-hm]'),
     ab = e.target.closest('[data-h]'),
@@ -1852,6 +1920,10 @@ function homeClick(e) {
   }
 }
 $('#home').addEventListener('click', homeClick);
+addEventListener('keydown', (e) => {
+  const m = $('#hmenu');
+  if (e.key === 'Escape' && m && !m.hidden) m.hidden = true;
+});
 $('#home').addEventListener('keydown', (e) => {
   const c = e.target.closest && e.target.closest('[data-id]');
   if (c && e.target === c && (e.key === 'Enter' || e.key === ' ')) {
@@ -2803,7 +2875,10 @@ function exportPdf() {
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr());
 }
 function downloadJson(name, project) {
-  const file = (String(name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'mindly') + '.json';
+  const file =
+    (String(name)
+      .replace(/(_mindly)+$/i, '')
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'mindly') + '_Mindly.json';
   dl(
     file,
     new Blob(
@@ -2859,7 +2934,7 @@ $('#file').addEventListener('change', async (e) => {
     const j = JSON.parse(await f.text()),
       p = j.project || j;
     if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
-    const name = (j.metadata && j.metadata.name) || f.name.replace(/\.json$/i, '') || t('untitled');
+    const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
     const r = await api('POST', '/projects', { name, project: p });
     await openProject(r.id);
     toast(t('t_imported'));
@@ -2971,10 +3046,8 @@ const ACT = {
   center: fmtCenter,
   shortcuts: showShortcuts,
   shortcuts2: showShortcuts,
-  about: () =>
-    modal(t('a_about'), `<p><b>Mindly</b></p><p>${t('ab_text')}</p>`, [
-      { l: t('b_close'), c: 'pri' },
-    ]),
+  about: showInfo,
+  license: showLicense,
 };
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act],[data-shape],[data-m]');
@@ -3197,7 +3270,16 @@ function linkClick(id) {
 }
 svg.addEventListener('pointerdown', (e) => {
   hidePop();
-  if (e.button === 2 || !cur) return;
+  if (!cur) return;
+  if (e.button === 2) {
+    /* right button + drag on the background = multiple selection (same as Shift + drag) */
+    if (e.target.closest('[data-n],[data-l],[data-h],[data-c]')) return;
+    const [rx, ry] = toW(e.clientX, e.clientY);
+    band = { x0: rx, y0: ry, x1: rx, y1: ry, base: new Set() };
+    drag = { t: 'band', rc: true, on: false, sx: e.clientX, sy: e.clientY };
+    svg.setPointerCapture(e.pointerId);
+    return;
+  }
   if (document.activeElement !== document.body) document.activeElement.blur();
   if (editing) commitEdit();
   const [wx, wy] = toW(e.clientX, e.clientY);
@@ -3212,8 +3294,17 @@ svg.addEventListener('pointerdown', (e) => {
     mod = e.shiftKey || e.ctrlKey || e.metaKey;
   if (e.target.dataset.c) {
     const n = byId([...sel.n][0]);
-    drag = { t: 'cn', id: n.id };
-    conn = { id: n.id, x: wx, y: wy };
+    const action = e.target.dataset.c;
+    if (n) {
+      if (action === 'add') {
+        const isLeft = wx < n.x + n.w / 2;
+        child(isLeft);
+      } else if (action === 'link') {
+        drag = { t: 'cn', id: n.id };
+        conn = { id: n.id, x: wx, y: wy };
+      }
+    }
+    return;
   } else if (h) {
     const n = byId([...sel.n][0]);
     drag = { t: 'rs', h, wx, wy, o: { x: n.x, y: n.y, w: n.w, h: n.h }, id: n.id, moved: false };
@@ -3343,6 +3434,14 @@ svg.addEventListener('pointermove', (e) => {
     conn = { id: drag.id, x: wx, y: wy, hover: o ? o.id : null };
     render();
   } else if (drag.t === 'band') {
+    if (drag.rc && !drag.on) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return; /* still a plain right-click */
+      drag.on = true;
+      clearTimeout(rc.timer);
+      rc.timer = null;
+      hidePop();
+      if (sel.n.size || sel.l) setSel([]);
+    }
     band.x1 = wx;
     band.y1 = wy;
     const x = Math.min(band.x0, wx),
@@ -3362,6 +3461,7 @@ const endDrag = (e) => {
   if (!drag) return;
   const d = drag,
     dt = dropT;
+  if (d.rc && d.on) rcDragAt = Date.now(); /* swallow the context menu that follows a right-drag */
   drag = null;
   band = null;
   dropT = null;
@@ -3448,9 +3548,12 @@ svg.addEventListener('dblclick', (e) => {
   addNode(x, y);
 });
 const rc = { timer: null, x: 0, y: 0 };
+let rcDragAt = 0;
 svg.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (!cur) return;
+  if (drag && drag.rc && drag.on) return;
+  if (Date.now() - rcDragAt < 400) return;
   const ne = e.target.closest('[data-n]'),
     [wx, wy] = toW(e.clientX, e.clientY);
   let items;
