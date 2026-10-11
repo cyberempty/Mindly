@@ -192,6 +192,8 @@ def route(m, parts, body):
         if m == 'DELETE':
             to_trash(p)  # Recycle Bin, not a permanent delete
             return 200, {'ok': True}
+    elif len(parts) == 2 and m == 'GET' and parts[1] == 'path':
+        return 200, {'path': pdir(parts[0])}  # full path of the project folder
     elif len(parts) == 2 and m == 'POST' and parts[1] in ('rename', 'duplicate'):
         p = pdir(parts[0])
         name = re.sub(r'[\x00-\x1f]', '', str(body.get('name') or '')).strip()[:60]

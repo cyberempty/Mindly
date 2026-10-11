@@ -9,7 +9,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🧠%3C/text%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="style.css?v=15" />
+    <link rel="stylesheet" href="style.css?v=18" />
   </head>
   <body>
     <header id="top">
@@ -51,6 +51,13 @@
           <div class="mm-rc" data-c="sw"></div>
           <div class="mm-rc" data-c="se"></div>
         </div>
+        <div id="nsearch" role="search" hidden>
+          <input id="nsq" type="text" autocomplete="off" spellcheck="false" />
+          <span id="nscount" aria-live="polite"></span>
+          <button type="button" data-ns="prev">↑</button>
+          <button type="button" data-ns="next">↓</button>
+          <button type="button" data-ns="clear">✕</button>
+        </div>
         <div id="fbar" hidden></div>
         <textarea id="editor" hidden spellcheck="false"></textarea>
       </div>
@@ -64,6 +71,6 @@
     <div id="cpop" hidden></div>
     <div id="modal" hidden></div>
     <input type="file" id="file" accept=".json,application/json" hidden />
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=18"></script>
   </body>
 </html>

@@ -203,6 +203,28 @@ pm_search|Search projects…
 pm_mod|Last modified
 pm_cre|Creation date
 pm_name|Name
+pm_mod1|Last
+pm_mod2|Modified
+pm_cre1|Creation
+pm_cre2|date
+a_new1|New
+a_new2|project
+a_imp1|Import
+a_imp2|project
+a_find|Find in map…
+a_path|Project path…
+a_collapse|Collapse branch
+a_expand|Expand branch
+d_path|Project path
+d_pathLbl|Full path of the project folder
+b_copy|Copy path
+t_pathCopied|Path copied
+s_ph|Search nodes…
+s_prev|Previous match (Shift+Enter)
+s_next|Next match (Enter)
+s_clear|Clear search (Esc)
+s_none|No matches
+s_count|{0} of {1}
 pm_recent|Recent
 pm_none|No projects found.
 pm_created|Created
@@ -361,6 +383,96 @@ let renaming = false,
   mouse = { x: 0, y: 0 },
   onMC = null;
 const byId = (id) => M.nodes.find((n) => n.id === id);
+/* ----- collapsed branches -----
+ * Every node can hide the children that sit on its RIGHT (colR) and/or on its LEFT (colL):
+ * the two sides are independent. HID = ids of nodes currently hidden, CNT = hidden count per side. */
+let HID = new Set();
+const CNT = new Map();
+const colKey = (s) => (s === 'l' ? 'colL' : 'colR');
+const childSide = (p, c) =>
+  M.settings.layout === 'tidy' ? sideOf(c) : c.x + c.w / 2 < p.x + p.w / 2 ? 'l' : 'r';
+function kidsOn(n, s) {
+  const seen = new Set(),
+    out = [];
+  for (const l of M.links)
+    if (l.from === n.id && !seen.has(l.to)) {
+      seen.add(l.to);
+      const c = byId(l.to);
+      if (c && c !== n && childSide(n, c) === s) out.push(c);
+    }
+  return out;
+}
+function calcHidden() {
+  const h = new Set();
+  CNT.clear();
+  HID = h;
+  if (!M.nodes.some((n) => n.colL || n.colR)) return h;
+  const by = new Map(M.nodes.map((n) => [n.id, n])),
+    ch = new Map();
+  for (const l of M.links) {
+    if (!by.has(l.from) || !by.has(l.to)) continue;
+    if (!ch.has(l.from)) ch.set(l.from, []);
+    ch.get(l.from).push(l.to);
+  }
+  const walk = (id) => {
+    const out = new Set([id]),
+      st = [id];
+    while (st.length) {
+      const i = st.pop();
+      for (const k of ch.get(i) || []) if (!out.has(k)) (out.add(k), st.push(k));
+    }
+    return out;
+  };
+  for (const n of M.nodes)
+    for (const s of ['r', 'l']) {
+      if (!n[colKey(s)]) continue;
+      const u = new Set();
+      for (const c of kidsOn(n, s)) {
+        const sub = walk(c.id);
+        if (!sub.has(n.id)) sub.forEach((i) => u.add(i));
+      }
+      u.forEach((i) => h.add(i));
+      CNT.set(n.id + ':' + s, u.size);
+    }
+  return h;
+}
+function toggleCollapse(id, s) {
+  const n = byId(id);
+  if (!cur || !n) return;
+  const k = colKey(s);
+  snapshot();
+  if (n[k]) delete n[k];
+  else n[k] = true;
+  markDirty();
+  render();
+  buildPanel();
+}
+/* open every collapsed branch that hides node `id` (used by the search) */
+function revealNode(id) {
+  const seen = new Set();
+  let changed = false;
+  const up = (cid, d) => {
+    if (seen.has(cid) || d > 200) return;
+    seen.add(cid);
+    const c = byId(cid);
+    for (const l of M.links)
+      if (l.to === cid) {
+        const p = byId(l.from);
+        if (!p || !c) continue;
+        const k = colKey(childSide(p, c));
+        if (p[k]) {
+          delete p[k];
+          changed = true;
+        }
+        up(p.id, d + 1);
+      }
+  };
+  up(id, 0);
+  if (changed) {
+    markDirty();
+    calcHidden();
+  }
+}
 const sn = (v) => (M.settings.snap ? Math.round(v / 20) * 20 : v);
 const SR = () => svg.getBoundingClientRect();
 const toW = (cx, cy) => {
@@ -373,6 +485,92 @@ const need = () => {
   if ($('#modal').hidden) newProject();
   return false;
 };
+/* ----- search in nodes ----- */
+const S = { q: '', hits: [], i: -1, set: new Set(), cur: null };
+const fold = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+function searchScan() {
+  const q = fold(S.q.trim());
+  S.hits = q
+    ? M.nodes
+        .filter((n) => fold(n.text).includes(q))
+        .sort((a, b) => a.y - b.y || a.x - b.x)
+        .map((n) => n.id)
+    : [];
+  S.set = new Set(S.hits);
+}
+function searchStat() {
+  const e = $('#nscount');
+  if (!e) return;
+  e.textContent = !S.q.trim()
+    ? ''
+    : S.hits.length
+      ? t('s_count', S.i + 1, S.hits.length)
+      : t('s_none');
+  e.classList.toggle('none', !!S.q.trim() && !S.hits.length);
+}
+/* the map changed: recompute the matches but keep the current one and do not move the view */
+function searchRefresh() {
+  if (!S.q.trim()) return;
+  const prev = S.cur;
+  searchScan();
+  S.i = prev ? S.hits.indexOf(prev) : -1;
+  if (S.i < 0 && S.hits.length) S.i = 0;
+  S.cur = S.i >= 0 ? S.hits[S.i] : null;
+  searchStat();
+}
+function searchShow(i) {
+  if (!S.hits.length) return;
+  S.i = (i + S.hits.length) % S.hits.length;
+  S.cur = S.hits[S.i];
+  revealNode(S.cur);
+  const n = byId(S.cur),
+    r = SR();
+  if (n) {
+    M.view.x = r.width / 2 - (n.x + n.w / 2) * M.view.z;
+    M.view.y = r.height / 2 - (n.y + n.h / 2) * M.view.z;
+    viewDirty();
+  }
+  searchStat();
+  render();
+}
+function searchInput(q) {
+  S.q = q;
+  S.i = -1;
+  S.cur = null;
+  searchScan();
+  searchStat();
+  if (S.hits.length) searchShow(0);
+  else render();
+}
+/* popup (top-right of the work area): opened with Ctrl+F, closed with Esc / ✕ */
+let nsOpen = false;
+function searchOpen(on) {
+  nsOpen = !!on && !!cur;
+  $('#nsearch').hidden = !nsOpen;
+  $('#stage').classList.toggle('ns-open', nsOpen);
+  if (nsOpen) {
+    const i = $('#nsq');
+    i.focus();
+    i.select();
+  } else if (S.q) {
+    searchClear();
+    render();
+  }
+}
+function searchClear() {
+  S.q = '';
+  S.hits = [];
+  S.set = new Set();
+  S.i = -1;
+  S.cur = null;
+  const i = $('#nsq');
+  if (i) i.value = '';
+  searchStat();
+}
 /* ==========================================================
  * SHORTCUTS
  * ========================================================== */
@@ -393,6 +591,7 @@ const SC = [
   ['g_edit', 'Backspace', 'del'],
   ['g_edit', 'Ctrl+A', 'selAll'],
   ['g_edit', 'Esc', 'desel'],
+  ['g_edit', 'Ctrl+F', 'find'],
   ['g_create', 'Tab', 'child'],
   ['g_create', 'Shift+Tab', 'childLeft'],
   ['g_create', 'Enter', 'sibling'],
@@ -569,7 +768,7 @@ function edge(n, tx, ty) {
 function geo(l) {
   const a = byId(l.from),
     b = byId(l.to);
-  if (!a || !b) return null;
+  if (!a || !b || HID.has(a.id) || HID.has(b.id)) return null;
   const ac = [a.x + a.w / 2, a.y + a.h / 2],
     bc = [b.x + b.w / 2, b.y + b.h / 2],
     h = M.settings.layout === 'tidy' || Math.abs(bc[0] - ac[0]) >= Math.abs(bc[1] - ac[1]),
@@ -676,18 +875,50 @@ function overlay() {
           h += `<rect class="hdl" data-h="${k}" x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" stroke-width="${1 / z}"/>`;
         }
     }
+    /* side buttons, top to bottom: add -> link arrow -> collapse/expand (right and left are independent) */
+    let stackId = null;
     if (sel.n.size === 1 && !editing && !conn) {
       const n = byId([...sel.n][0]);
-      if (n)
-        for (const [sx, sy, g, d] of [
-          [n.x + n.w + 22 / z, n.y + n.h / 2 - 15 / z, '→', 'link'],
-          [n.x + n.w + 22 / z, n.y + n.h / 2 + 15 / z, '+', 'add'],
-          [n.x - 22 / z, n.y + n.h / 2 - 15 / z, '←', 'link'],
-          [n.x - 22 / z, n.y + n.h / 2 + 15 / z, '+', 'add'],
-        ])
-          h += `<circle class="cn" data-c="${d}" cx="${sx}" cy="${sy}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${sy}" font-size="${14 / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
+      if (n) {
+        stackId = n.id;
+        const cy = n.y + n.h / 2;
+        for (const s of ['r', 'l']) {
+          const sx = s === 'r' ? n.x + n.w + 22 / z : n.x - 22 / z,
+            btn = (dy, g, d, extra = '', fs = 14) =>
+              `<circle class="cn" data-c="${d}"${extra} cx="${sx}" cy="${cy + dy / z}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${cy + dy / z}" font-size="${fs / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
+          h += btn(-30, '+', 'add') + btn(0, s === 'r' ? '→' : '←', 'link');
+          const k = colKey(s);
+          if (n[k] || kidsOn(n, s).length) {
+            const cnt = CNT.get(n.id + ':' + s) || 0;
+            h += btn(
+              30,
+              n[k] ? cnt : '−',
+              'collapse',
+              ` data-cn="${n.id}" data-cs="${s}"`,
+              n[k] ? 11 : 16,
+            );
+          }
+        }
+      }
+    }
+    /* collapsed sides stay visible as a small badge with the number of hidden nodes */
+    for (const n of M.nodes) {
+      if (HID.has(n.id)) continue;
+      for (const s of ['r', 'l']) {
+        if (!n[colKey(s)] || stackId === n.id) continue;
+        const sx = s === 'r' ? n.x + n.w + 14 / z : n.x - 14 / z,
+          sy = n.y + n.h / 2;
+        h += `<circle class="cn" data-c="collapse" data-cn="${n.id}" data-cs="${s}" cx="${sx}" cy="${sy}" r="${10 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${sy}" font-size="${11 / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${CNT.get(n.id + ':' + s) || 0}</text>`;
+      }
     }
   }
+  if (S.q.trim())
+    for (const id of S.set) {
+      const n = byId(id);
+      if (!n || HID.has(id)) continue;
+      const c = id === S.cur;
+      h += `<rect class="hit${c ? ' cur' : ''}" x="${n.x - 6}" y="${n.y - 6}" width="${n.w + 12}" height="${n.h + 12}" rx="9" stroke-width="${(c ? 3.5 : 2) / z}"/>`;
+    }
   if (conn) {
     const n = byId(conn.id);
     if (n) {
@@ -715,12 +946,16 @@ function render() {
   const v = M.view,
     w = $('#world');
   let h = '';
+  calcHidden();
+  for (const id of [...sel.n]) if (HID.has(id)) sel.n.delete(id);
+  const dim = S.q.trim() && S.hits.length;
   for (const l of M.links) {
     const g = geo(l);
     if (g) h += linkSVG(l, g, sel.l === l.id);
   }
   for (const n of M.nodes)
-    h += `<g data-n="${n.id}" class="node">${nodeSVG(n, editing === n.id)}</g>`;
+    if (!HID.has(n.id))
+      h += `<g data-n="${n.id}" class="node${dim && !S.set.has(n.id) ? ' dim' : ''}">${nodeSVG(n, editing === n.id)}</g>`;
   for (const l of M.links) {
     const g = geo(l),
       lb = g && linkLabelSVG(l, g);
@@ -737,6 +972,7 @@ function render() {
   $('#zf').textContent = z;
   $('#stats').textContent = t('p_stats', M.nodes.length, M.links.length);
   $('#home').hidden = !!cur;
+  if (!cur && nsOpen) searchOpen(false);
   svg.classList.toggle('tl', tool === 'link');
   svg.classList.toggle('pan', space);
   refreshTB();
@@ -801,13 +1037,14 @@ function renderMinimap() {
   for (const l of M.links) {
     const a = byId(l.from),
       c = byId(l.to);
-    if (a && c) {
+    if (a && c && !HID.has(a.id) && !HID.has(c.id)) {
       const p = toMM(a.x + a.w / 2, a.y + a.h / 2),
         q = toMM(c.x + c.w / 2, c.y + c.h / 2);
       h += `<line class="mm-link" x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}"/>`;
     }
   }
   for (const n of M.nodes) {
+    if (HID.has(n.id)) continue;
     const [x, y] = toMM(n.x, n.y),
       w = n.w * s,
       hgt = n.h * s;
@@ -1019,9 +1256,12 @@ function refreshTB() {
 const MENUS = [
   [
     'm_file',
-    ['new', 'open', 'save', 'saveas', 'rename', 'close', '-', 'export', 'import', '-', 'preview'],
+    ['new', 'open', 'save', 'saveas', 'rename', 'close', '-', 'export', 'import', '-', 'preview', 'path'],
   ],
-  ['m_edit', ['undo', 'redo', '-', 'cut', 'copy', 'paste', 'dup', 'del', '-', 'selAll', 'desel']],
+  [
+    'm_edit',
+    ['undo', 'redo', '-', 'cut', 'copy', 'paste', 'dup', 'del', '-', 'selAll', 'desel', '-', 'find'],
+  ],
   ['m_insert', ['root', 'node', 'child', 'childLeft', 'sibling', 'link']],
   [
     'm_view',
@@ -1095,6 +1335,11 @@ function buildUI() {
   $('#theme').textContent = theme === 'dark' ? '☀' : '☾';
   $('#btnProjects').textContent = t('a_projects');
   $('#pname').title = t('a_rename');
+  $('#nsq').placeholder = t('s_ph');
+  $('#nsq').setAttribute('aria-label', t('s_ph'));
+  $('#nsearch [data-ns="prev"]').title = t('s_prev');
+  $('#nsearch [data-ns="next"]').title = t('s_next');
+  $('#nsearch [data-ns="clear"]').title = t('s_clear');
   buildHome();
   updTitle();
   setStat(st);
@@ -1373,6 +1618,7 @@ function redo() {
 }
 function markDirty() {
   if (!cur) return;
+  searchRefresh();
   if (M.settings.layout === 'tidy') {
     layoutAll();
     render();
@@ -1462,6 +1708,7 @@ const fmtD = (s) => (s ? new Date(s).toLocaleString('en-GB') : '');
 function resetCur() {
   cur = null;
   M = blank();
+  searchClear();
   undoS = [];
   redoS = [];
   dirty = false;
@@ -1487,6 +1734,7 @@ async function openProject(id) {
       modified: r.metadata.modified,
     };
     M = norm(r.project);
+    searchClear();
     if (M.settings.layout === 'tidy') layoutAll();
     if (!r.project.view) {
       const s = SR();
@@ -1620,11 +1868,63 @@ async function manager() {
     return err(e, 't_loadErr');
   }
   const box = document.createElement('div');
-  box.innerHTML = `<div class="pmbar"><input id="pq" placeholder="${t('pm_search')}"><select id="ps"><option value="m">${t('pm_mod')}</option><option value="c">${t('pm_cre')}</option><option value="n">${t('pm_name')}</option></select><button class="btn pri" data-r="new">${t('a_new')}</button><button class="btn" data-r="import">${t('a_importProj')}</button></div><div id="prec"></div><div id="plist"></div>`;
+  /* sort menu: a custom dropdown, because a native <select> cannot show two-line options */
+  const SORTS = [
+    ['m', 'pm_mod1', 'pm_mod2'],
+    ['c', 'pm_cre1', 'pm_cre2'],
+    ['n', 'pm_name'],
+  ];
+  const sortLbl = (s) =>
+    `<span class="sortdd-l">${s
+      .slice(1)
+      .map((k) => `<span>${t(k)}</span>`)
+      .join('')}</span>`;
+  box.innerHTML = `<div class="pmbar"><input id="pq" placeholder="${t('pm_search')}"><div class="sortdd" id="ps" data-v="m"><button type="button" class="sortdd-btn" aria-haspopup="listbox" aria-expanded="false">${sortLbl(SORTS[0])}<i class="sortdd-ar">▾</i></button><div class="sortdd-menu" role="listbox" hidden>${SORTS.map((s) => `<button type="button" role="option" data-v="${s[0]}" aria-selected="${s[0] === 'm'}">${sortLbl(s)}</button>`).join('')}</div></div><button class="btn pri two" data-r="new" title="${t('a_new')}"><span>${t('a_new1')}</span><span>${t('a_new2')}</span></button><button class="btn two" data-r="import" title="${t('a_importProj')}"><span>${t('a_imp1')}</span><span>${t('a_imp2')}</span></button></div><div id="prec"></div><div id="plist"></div>`;
   modal(t('a_projects'), box, [{ l: t('b_close') }], true);
+  const dd = box.querySelector('#ps'),
+    ddb = dd.querySelector('.sortdd-btn'),
+    ddm = dd.querySelector('.sortdd-menu');
+  const closeDD = () => {
+    ddm.hidden = true;
+    ddb.setAttribute('aria-expanded', 'false');
+  };
+  const openDD = () => {
+    const r = ddb.getBoundingClientRect();
+    ddm.style.left = r.left + 'px';
+    ddm.style.top = r.bottom + 4 + 'px';
+    ddm.style.minWidth = r.width + 'px';
+    ddm.hidden = false;
+    ddb.setAttribute('aria-expanded', 'true');
+  };
+  ddb.onclick = () => (ddm.hidden ? openDD() : closeDD());
+  ddm.onclick = (e) => {
+    const o = e.target.closest('[data-v]');
+    if (!o) return;
+    dd.dataset.v = o.dataset.v;
+    ddb.querySelector('.sortdd-l').outerHTML = sortLbl(SORTS.find((s) => s[0] === o.dataset.v));
+    ddm.querySelectorAll('[data-v]').forEach((x) => x.setAttribute('aria-selected', x === o));
+    closeDD();
+    ddb.focus();
+    draw();
+  };
+  dd.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !ddm.hidden) {
+      e.stopPropagation();
+      closeDD();
+      ddb.focus();
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !ddm.hidden) {
+      e.preventDefault();
+      const o = [...ddm.querySelectorAll('[data-v]')],
+        i = o.indexOf(document.activeElement);
+      o[(i + (e.key === 'ArrowDown' ? 1 : -1) + o.length) % o.length].focus();
+    }
+  });
+  box.addEventListener('pointerdown', (e) => {
+    if (!dd.contains(e.target)) closeDD();
+  });
   const draw = () => {
     const q = box.querySelector('#pq').value.toLowerCase(),
-      s = box.querySelector('#ps').value;
+      s = dd.dataset.v;
     let a = list.filter((p) => p.name.toLowerCase().includes(q));
     a.sort((x, y) =>
       s === 'n'
@@ -1647,14 +1947,16 @@ async function manager() {
       ? a
           .map(
             (p) =>
-              `<div class="row"><div class="nm"><b data-r="open" data-id="${esc(p.id)}">${esc(p.name)}</b><small>${t('pm_modified')}: ${fmtD(p.modified)} · ${t('pm_created')}: ${fmtD(p.created)}</small></div><button data-r="open" data-id="${esc(p.id)}">${t('b_open')}</button><button data-r="ren" data-id="${esc(p.id)}" title="${t('b_ren')}">✎</button><button data-r="dup" data-id="${esc(p.id)}" title="${t('b_dup')}">⧉</button><button data-r="del" data-id="${esc(p.id)}" title="${t('b_delete')}">✕</button></div>`,
+              `<div class="row" data-r="open" data-id="${esc(p.id)}" tabindex="0"><div class="nm"><b>${esc(p.name)}</b><small>${t('pm_modified')}: ${fmtD(p.modified)} · ${t('pm_created')}: ${fmtD(p.created)}</small></div><button data-r="open" data-id="${esc(p.id)}">${t('b_open')}</button><button data-r="ren" data-id="${esc(p.id)}" title="${t('b_ren')}">✎</button><button data-r="dup" data-id="${esc(p.id)}" title="${t('b_dup')}">⧉</button><button data-r="del" data-id="${esc(p.id)}" title="${t('b_delete')}">✕</button></div>`,
           )
           .join('')
       : `<p class="muted">${t('pm_none')}</p>`;
   };
   box.querySelector('#pq').oninput = draw;
-  box.querySelector('#ps').onchange = draw;
   draw();
+  box.onkeydown = (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('row')) e.target.click();
+  };
   box.onclick = async (e) => {
     const b = e.target.closest('[data-r]');
     if (!b) return;
@@ -1963,6 +2265,8 @@ function spawn(n, x, y, from, pl, side) {
   if (side) c.side = side;
   M.nodes.push(c);
   M.links.push(mkl({ ...(pl || {}), id: uid(), from, to: c.id, end: 'none' }));
+  const par = byId(from);
+  if (par) delete par[colKey(childSide(par, c))];
   setSel([c.id]);
   markDirty();
   startEdit(c.id);
@@ -2008,15 +2312,21 @@ function del() {
   }
   if (!sel.n.size) return;
   snapshot();
-  M.nodes = M.nodes.filter((n) => !sel.n.has(n.id));
+  const rm = new Set(sel.n);
+  for (const i of subtree([...sel.n])) if (HID.has(i)) rm.add(i); /* a collapsed branch goes with its node */
+  M.nodes = M.nodes.filter((n) => !rm.has(n.id));
   M.links = M.links.filter((l) => byId(l.from) && byId(l.to));
   setSel([]);
   markDirty();
 }
-const pick = () => ({
-  nodes: M.nodes.filter((n) => sel.n.has(n.id)),
-  links: M.links.filter((l) => sel.n.has(l.from) && sel.n.has(l.to)),
-});
+const pick = () => {
+  const ids = new Set(sel.n);
+  for (const i of subtree([...sel.n])) if (HID.has(i)) ids.add(i); /* include collapsed branches */
+  return {
+    nodes: M.nodes.filter((n) => ids.has(n.id)),
+    links: M.links.filter((l) => ids.has(l.from) && ids.has(l.to)),
+  };
+};
 function clone(src, off) {
   const m = {};
   const nodes = src.nodes.map((n) => {
@@ -2057,7 +2367,7 @@ function dup() {
   addClone(clone(pick(), 30));
 }
 function selAll() {
-  if (cur) setSel(M.nodes.map((n) => n.id));
+  if (cur) setSel(M.nodes.filter((n) => !HID.has(n.id)).map((n) => n.id));
 }
 function desel() {
   if (editing) return cancelEdit();
@@ -2698,12 +3008,13 @@ const zoomBy = (f) => {
   zoomAt(f, r.left + r.width / 2, r.top + r.height / 2);
 };
 function bbox() {
-  if (!M.nodes.length) return null;
+  const vis = M.nodes.filter((n) => !HID.has(n.id));
+  if (!vis.length) return null;
   let a = 1e9,
     b = 1e9,
     c = -1e9,
     d = -1e9;
-  for (const n of M.nodes) {
+  for (const n of vis) {
     a = Math.min(a, n.x);
     b = Math.min(b, n.y);
     c = Math.max(c, n.x + n.w);
@@ -2753,7 +3064,7 @@ function svgStr() {
     const g = geo(l);
     if (g) s += linkSVG(l, g, false, true);
   }
-  for (const n of M.nodes) s += nodeSVG(n, false);
+  for (const n of M.nodes) if (!HID.has(n.id)) s += nodeSVG(n, false);
   for (const l of M.links) {
     const g = geo(l);
     if (g) s += linkLabelSVG(l, g);
@@ -2945,8 +3256,44 @@ $('#file').addEventListener('change', async (e) => {
 /* ==========================================================
  * ACTIONS
  * ========================================================== */
+async function showPath() {
+  if (!need()) return;
+  let path;
+  try {
+    path = (await api('GET', '/projects/' + encodeURIComponent(cur.id) + '/path')).path;
+  } catch (e) {
+    return err(e, 't_loadErr');
+  }
+  const box = document.createElement('div');
+  box.innerHTML = `<label class="f"><span>${t('d_pathLbl')}</span><input id="ppath" readonly spellcheck="false" value="${esc(path)}"></label>`;
+  const inp = box.querySelector('#ppath');
+  modal(t('d_path'), box, [
+    { l: t('b_close') },
+    {
+      l: t('b_copy'),
+      c: 'pri',
+      f: async () => {
+        inp.select();
+        try {
+          await navigator.clipboard.writeText(path);
+        } catch (e) {
+          document.execCommand('copy');
+        }
+        toast(t('t_pathCopied'));
+        return false;
+      },
+    },
+  ]);
+  inp.focus();
+  inp.select();
+}
 const ACT = {
   new: newProject,
+  find: () => {
+    if (!need()) return;
+    searchOpen(true);
+  },
+  path: showPath,
   open: manager,
   projects: manager,
   save: () => need() && save(false),
@@ -3120,6 +3467,7 @@ function subtree(ids) {
 const GX = 70,
   GY = 18;
 function layoutAll() {
+  calcHidden();
   const inL = new Map();
   for (const l of M.links)
     if (l.text && byId(l.from) && byId(l.to)) {
@@ -3139,7 +3487,7 @@ function layoutAll() {
       if (l.from === n.id && !u.has(l.to)) {
         u.add(l.to);
         const c = byId(l.to);
-        if (c) a.push(c);
+        if (c && !HID.has(c.id)) a.push(c);
       }
     return a.sort((p, q) => p.y + p.h / 2 - q.y - q.h / 2);
   };
@@ -3236,7 +3584,7 @@ function hitNode(x, y, ex) {
   let best = null,
     bd = 1e9;
   for (const n of M.nodes) {
-    if (n.id === ex) continue;
+    if (n.id === ex || HID.has(n.id)) continue;
     const dx = Math.max(n.x - x, 0, x - n.x - n.w),
       dy = Math.max(n.y - y, 0, y - n.y - n.h),
       d = Math.hypot(dx, dy);
@@ -3293,8 +3641,12 @@ svg.addEventListener('pointerdown', (e) => {
     le = e.target.closest('[data-l]'),
     mod = e.shiftKey || e.ctrlKey || e.metaKey;
   if (e.target.dataset.c) {
-    const n = byId([...sel.n][0]);
     const action = e.target.dataset.c;
+    if (action === 'collapse') {
+      toggleCollapse(e.target.dataset.cn, e.target.dataset.cs);
+      return;
+    }
+    const n = byId([...sel.n][0]);
     if (n) {
       if (action === 'add') {
         const isLeft = wx < n.x + n.w / 2;
@@ -3381,7 +3733,13 @@ svg.addEventListener('pointermove', (e) => {
     const o2 = [...M.nodes]
       .reverse()
       .find(
-        (n) => !drag.ex.has(n.id) && wx >= n.x && wx <= n.x + n.w && wy >= n.y && wy <= n.y + n.h,
+        (n) =>
+          !drag.ex.has(n.id) &&
+          !HID.has(n.id) &&
+          wx >= n.x &&
+          wx <= n.x + n.w &&
+          wy >= n.y &&
+          wy <= n.y + n.h,
       );
     dropT = o2 ? o2.id : null;
     render();
@@ -3451,7 +3809,9 @@ svg.addEventListener('pointermove', (e) => {
     sel.n = new Set([
       ...band.base,
       ...M.nodes
-        .filter((n) => n.x < x + w && n.x + n.w > x && n.y < y + h && n.y + n.h > y)
+        .filter(
+          (n) => !HID.has(n.id) && n.x < x + w && n.x + n.w > x && n.y < y + h && n.y + n.h > y,
+        )
         .map((n) => n.id),
     ]);
     render();
@@ -3495,6 +3855,8 @@ const endDrag = (e) => {
       tn = byId(dt);
     if (!M.links.some((x) => x.to === dt)) n.side = n.x + n.w / 2 < tn.x + tn.w / 2 ? 'l' : 'r';
     else delete n.side;
+    delete tn.colL;
+    delete tn.colR;
   }
   if (d.t === 'mv' && d.moved) {
     const n = byId(d.id),
@@ -3543,7 +3905,7 @@ svg.addEventListener('dblclick', (e) => {
     le = el.closest('[data-l]');
   if (ne) return startEdit(ne.dataset.n);
   if (le) return startEditLink(le.dataset.l);
-  if (el.dataset.h) return;
+  if (el.dataset.h || el.dataset.c) return;
   const [x, y] = toW(e.clientX, e.clientY);
   addNode(x, y);
 });
@@ -3635,7 +3997,7 @@ addEventListener('keydown', (e) => {
     ACT.save();
     return;
   }
-  if (typing && !['Ctrl+Shift+S', 'Ctrl+O', 'Ctrl+N', 'F1'].includes(c)) return;
+  if (typing && !['Ctrl+Shift+S', 'Ctrl+O', 'Ctrl+N', 'Ctrl+F', 'F1'].includes(c)) return;
   if (c === 'Space') {
     e.preventDefault();
     if (!space) {
@@ -3660,6 +4022,23 @@ addEventListener('keyup', (e) => {
 /* ==========================================================
  * INIT
  * ========================================================== */
+$('#nsq').addEventListener('input', (e) => searchInput(e.target.value));
+$('#nsq').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (S.hits.length) searchShow(S.i + (e.shiftKey ? -1 : 1));
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    searchOpen(false);
+    e.target.blur();
+  }
+});
+$('#nsearch').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ns]');
+  if (!b) return;
+  if (b.dataset.ns === 'clear') searchOpen(false);
+  else if (S.hits.length) searchShow(S.i + (b.dataset.ns === 'next' ? 1 : -1));
+});
 (async () => {
   $('#props').hidden = false;
   document.body.dataset.theme = theme;

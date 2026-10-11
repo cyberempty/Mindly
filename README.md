@@ -122,6 +122,7 @@ From left to right:
 - **Save status**: *Saved*, *Saving…*, *Unsaved changes*, *Save error* (or *No project*).
 - **Projects**: opens the project management window.
 - **Theme button** (☾ / ☀): switches between light and dark theme.
+- **Search popup** (only while a project is open; `Ctrl + F`, top-right of the work area): finds words inside the blocks of the map. See [Searching blocks](#searching-blocks).
 
 ### Toolbar (below the top bar)
 
@@ -174,8 +175,8 @@ Shows a hint about the current command, the number of blocks and links, and the 
 The **Projects** window (it opens at startup and from the *Projects* button / File menu → Open project) contains:
 
 - **Search projects…**: filters the list as you type.
-- **Sort by**: *Last modified*, *Creation date* or *Name*.
-- **New project**: creates a project.
+- **Sort by**: a dropdown with *Last modified*, *Creation date* and *Name*. Each entry is written on two lines with centered text (**Last / Modified**, **Creation / date**, **Name**), both in the closed button and in the open list. Click outside the list or press `Esc` to close it; `↑` / `↓` move between the entries.
+- **New project** and **Import project**: two buttons, each written on two lines (**New / project**, **Import / project**) with centered text, same size and look as the sort button. *New project* creates an empty project; *Import project* creates a new project from a `.json` file.
 - **Recent**: quick buttons with the most recently opened projects (up to 8). They don't appear while you are searching.
 - **List**: for each project you see the name, last modified date and creation date.
 
@@ -183,7 +184,7 @@ For each project:
 
 | Action | How |
 |---|---|
-| **Open** | click the name or the *Open* button |
+| **Open** | click **anywhere on the project's row** (name, dates or empty space), or use the *Open* button. Clicking the ✎ ⧉ ✕ buttons does not open the project |
 | **Rename** | ✎ button |
 | **Duplicate** | ⧉ button (asks for the name of the copy, suggested as "Copy of …") |
 | **Delete** | ✕ button, with a **double confirmation**: first *"Do you want to delete …?"*, then a choice between **Delete**, **Export JSON and delete** (the `.json` file is downloaded first; if the export fails nothing is deleted) and **Cancel**. The project folder is **moved to the computer's Recycle Bin** (Trash on macOS/Linux), not erased: you can restore it from there |
@@ -201,6 +202,10 @@ Asks for the name and creates a project that already contains a **title block** 
 - Maximum length: **60 characters**.
 - If a folder with the same name already exists, one with the suffix `_2`, `_3`, … is created.
 - The name you typed is still the one displayed inside Mindly.
+
+### Showing the project's full path
+
+File menu → **Project path…** (the last item of the menu) opens a window with the **complete path of the open project's folder** on your computer (for example `C:\Users\you\Mindly\projects\My map_Mindly`). The **Copy path** button copies it to the clipboard.
 
 ### Closing a project
 
@@ -307,6 +312,33 @@ Drag a block **onto another**: the target is highlighted in **orange**. When you
 - the blocks linked below the moved one follow it.
 
 You cannot attach a block to one of its own descendants (it would create a closed loop). If you release on an empty space, the parent does not change. `Ctrl+Z` undoes position and link together. In tidy mode, if the new parent is the main block, the side (right/left) depends on where you release.
+
+### Collapsing and expanding branches
+
+Select a single block: next to it, on **both its right and its left side**, three round buttons appear, always in this order from top to bottom:
+
+1. **＋ Add**: creates a child block on that side.
+2. **→ / ← Link**: drag it onto another block to create a link.
+3. **− Collapse / expand**: hides or shows the branch on that side.
+
+How it works:
+
+- **Right and left are independent.** The button on the right side only hides the children (and everything below them) that sit on the right of the block; the button on the left side only handles the left ones. A side with no children has no collapse button.
+- A collapsed side stays visible even when the block is not selected: a small round badge shows **how many blocks are hidden** there. Click the badge (or select the block and click the same button, which now shows that number) to expand the branch again.
+- Hidden blocks and their links are not drawn, are not reachable with the mouse, do not take room in tidy mode (the map closes the gap) and are not part of Select all, the minimap, *Fit to screen* or the exports/preview.
+- Moving, duplicating, copying or cutting a block with a collapsed branch takes the hidden branch with it, and deleting it deletes the hidden branch too.
+- Adding a child (`Tab`, `Shift+Tab`, `Enter`, the ＋ button) on a collapsed side, or dropping a block onto a collapsed block, expands it automatically so the new block is never invisible.
+- The collapsed state is **saved in the project** (`colR` / `colL` in the block) and can be undone with `Ctrl+Z`.
+
+### Searching blocks
+
+Press **`Ctrl + F`** (or Edit → *Find in map…*): a **search popup** opens in the top-right corner of the work area (the browser's own find box does not open).
+
+- Type a word: the search is **live**, ignores upper/lower case and accents, and looks in the text of **all** blocks, including those hidden inside collapsed branches.
+- Matching blocks get an **orange outline**; all the other blocks fade. The first match becomes the current one (thicker outline) and the view **centers on it**.
+- The counter shows the current match (for example *2 of 4*) or *No matches*.
+- **`Enter`** (or ↓) goes to the next match, **`Shift + Enter`** (or ↑) to the previous one. If a match is inside a collapsed branch, the branch is expanded so you can see it.
+- **`Esc`** or ✕ clears the search and closes the popup.
 
 ### Deleting
 
@@ -583,6 +615,7 @@ You can also view them inside Mindly with **`F1`** or **`?`** ("Keyboard shortcu
 | `Ctrl + D` | Duplicate |
 | `Delete` / `Backspace` | Delete |
 | `Ctrl + A` | Select all |
+| `Ctrl + F` | Open the search popup (top-right of the work area; works also while typing in it) |
 | `Esc` | Deselect / cancel the current operation |
 
 ### Creating blocks
@@ -659,11 +692,11 @@ You can also view them inside Mindly with **`F1`** or **`?`** ("Keyboard shortcu
 
 ### When typing in a text field
 
-To avoid conflicts, while you type inside a field (project name, Properties panel, search…) the editor's shortcuts are **disabled**. Only `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+O`, `Ctrl+N` and `F1` remain active. If a window is open, `Esc` closes it.
+To avoid conflicts, while you type inside a field (project name, Properties panel, search…) the editor's shortcuts are **disabled**. Only `Ctrl+S`, `Ctrl+Shift+S`, `Ctrl+O`, `Ctrl+N`, `Ctrl+F` and `F1` remain active. If a window is open, `Esc` closes it.
 
 ### Beware of browser shortcuts
 
-Some browsers **reserve** certain combinations and do not allow sites to intercept them, in particular `Ctrl+N` (new window) and `Ctrl+W` (close tab). The same actions are always available from the **File** menu.
+Some browsers **reserve** certain combinations and do not allow sites to intercept them, in particular `Ctrl+N` (new window) and `Ctrl+W` (close tab). The same actions are always available from the **File** menu. `Ctrl+F` is intercepted by Mindly, so the browser's own find box does not appear (with no project open it shows the "no project" warning and opens *New project*).
 
 ---
 
@@ -695,10 +728,10 @@ Some browsers **reserve** certain combinations and do not allow sites to interce
 ## 19. Menus: full list of items
 
 ### File
-New project · Open project… · Save · Save as / duplicate… · Rename project… · Close project · *(separator)* · **Export ▸** (submenu: PDF · PNG · SVG · JSON) · **Import…** · *(separator)* · Preview…
+New project · Open project… · Save · Save as / duplicate… · Rename project… · Close project · *(separator)* · **Export ▸** (submenu: PDF · PNG · SVG · JSON) · **Import…** · *(separator)* · Preview… · **Project path…**
 
 ### Edit
-Undo · Redo · *(separator)* · Cut · Copy · Paste · Duplicate · Delete · *(separator)* · Select all · Deselect / cancel operation
+Undo · Redo · *(separator)* · Cut · Copy · Paste · Duplicate · Delete · *(separator)* · Select all · Deselect / cancel operation · *(separator)* · Find in map…
 
 ### Insert
 Title block (main node) · New block · Create child block · Create child block on the left · Create sibling block · Link mode
@@ -767,7 +800,7 @@ Contains everything needed to rebuild the map:
 }
 ```
 
-- `nodes`: blocks (text, coordinates, size, colors, font, style, shape, opacity, `side` and manual size `manual` when present).
+- `nodes`: blocks (text, coordinates, size, colors, font, style, shape, opacity, `side` and manual size `manual` when present, and `colR` / `colL` when the right / left branch of the block is collapsed).
 - `links`: links (from / to, color, thickness, type, dashing, ends).
 - `settings`: grid, snap, mode.
 - `view`: position (`x`, `y`) and zoom (`z`) of the view.
@@ -824,6 +857,7 @@ To make a backup, just **copy the `projects/` folder** (or the folder of a singl
 | `GET` | `/api/projects` | list of projects |
 | `POST` | `/api/projects` | creates a project (`name`, optional `project`) |
 | `GET` | `/api/projects/<id>` | reads a project (metadata and map) |
+| `GET` | `/api/projects/<id>/path` | full path of the project folder on disk |
 | `PUT` | `/api/projects/<id>` | saves the map |
 | `DELETE` | `/api/projects/<id>` | moves the project folder to the Recycle Bin |
 | `POST` | `/api/projects/<id>/rename` | renames (`name`) |
