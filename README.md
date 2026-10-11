@@ -5,6 +5,19 @@ No accounts, cloud, online databases or Internet connection are needed: your pro
 
 ---
 
+## Screenshots
+
+### Home: your mind maps
+![Mindly home screen: create a new mind map, import JSON, and browse All / Recent / Favorites](images/home-projects.png)
+
+### Editor: light theme
+![Mindly editor in the light theme, with menu bar, toolbar, tool palette and a sample mind map](images/editor-light-theme.png)
+
+### Editor: dark theme
+![Mindly editor in the dark theme](images/editor-dark-theme.png)
+
+---
+
 ## Table of contents
 
 1. [Requirements](#1-requirements)
@@ -54,6 +67,10 @@ Mindly/
 ├── start.bat          ← double-click to start everything
 ├── server.py          ← local server (project saving and API)
 ├── README.md          ← this file
+├── images/           ← screenshots used in this README
+│   ├── home-projects.png
+│   ├── editor-light-theme.png
+│   └── editor-dark-theme.png
 ├── static/           ← all the site's code
 │   ├── index.html     ← page structure
 │   ├── style.css      ← visual appearance (light and dark theme)
