@@ -4,7 +4,7 @@ import json, os, re, shutil, sys, threading, uuid, webbrowser
 sys.dont_write_bytecode = True
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, quote
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(BASE, 'static')
@@ -99,6 +99,68 @@ def create(name, proj):
     return {'id': folder, 'metadata': meta, 'project': proj}
 
 
+def _trash_windows(path):
+    """Windows: send to the Recycle Bin (SHFileOperationW + FOF_ALLOWUNDO)."""
+    import ctypes
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _pack_ = 1 if ctypes.sizeof(ctypes.c_void_p) == 4 else 8
+        _fields_ = [('hwnd', ctypes.c_void_p), ('wFunc', ctypes.c_uint),
+                    ('pFrom', ctypes.c_void_p), ('pTo', ctypes.c_void_p),
+                    ('fFlags', ctypes.c_ushort), ('fAnyOperationsAborted', ctypes.c_int),
+                    ('hNameMappings', ctypes.c_void_p), ('lpszProgressTitle', ctypes.c_void_p)]
+
+    src = ctypes.create_unicode_buffer(os.path.abspath(path) + '\0')  # double-null terminated
+    op = SHFILEOPSTRUCTW()
+    op.wFunc = 3  # FO_DELETE
+    op.pFrom = ctypes.addressof(src)
+    op.fFlags = 0x40 | 0x10 | 0x4 | 0x400  # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
+    if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) != 0 or op.fAnyOperationsAborted:
+        raise OSError('recycle bin failed')
+
+
+def _unique_in(folder, name):
+    base, ext = os.path.splitext(name)
+    n, i = name, 2
+    while os.path.lexists(os.path.join(folder, n)):
+        n = '%s %d%s' % (base, i, ext)
+        i += 1
+    return n
+
+
+def _trash_mac(path):
+    folder = os.path.expanduser('~/.Trash')
+    shutil.move(path, os.path.join(folder, _unique_in(folder, os.path.basename(path))))
+
+
+def _trash_linux(path):
+    """Linux: freedesktop.org Trash specification (~/.local/share/Trash)."""
+    root = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'Trash')
+    files, info = os.path.join(root, 'files'), os.path.join(root, 'info')
+    os.makedirs(files, exist_ok=True)
+    os.makedirs(info, exist_ok=True)
+    name = _unique_in(files, os.path.basename(path))
+    with open(os.path.join(info, name + '.trashinfo'), 'w', encoding='utf-8') as fh:
+        fh.write('[Trash Info]\nPath=%s\nDeletionDate=%s\n' % (
+            quote(os.path.abspath(path)), datetime.now().strftime('%Y-%m-%dT%H:%M:%S')))
+    shutil.move(path, os.path.join(files, name))
+
+
+def to_trash(path):
+    """Move a project folder to the computer's Recycle Bin / Trash (never a permanent delete)."""
+    try:
+        if sys.platform.startswith('win'):
+            _trash_windows(path)
+        elif sys.platform == 'darwin':
+            _trash_mac(path)
+        else:
+            _trash_linux(path)
+    except Exception:
+        raise Err(500, 'trash_failed')
+    if os.path.exists(path):
+        raise Err(500, 'trash_failed')
+
+
 def route(m, parts, body):
     if not parts:
         if m == 'GET':
@@ -118,7 +180,7 @@ def route(m, parts, body):
             jwrite(p, 'metadata.json', meta)
             return 200, {'modified': meta['modified']}
         if m == 'DELETE':
-            shutil.rmtree(p)
+            to_trash(p)  # Recycle Bin, not a permanent delete
             return 200, {'ok': True}
     elif len(parts) == 2 and m == 'POST' and parts[1] in ('rename', 'duplicate'):
         p = pdir(parts[0])

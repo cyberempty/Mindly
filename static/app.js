@@ -156,7 +156,10 @@ st_error|Save error
 st_none|No project
 t_created|Project created
 t_saved|Project saved
-t_deleted|Project deleted
+t_deleted|Project moved to the Recycle Bin
+t_deletedExp|JSON downloaded, project moved to the Recycle Bin
+t_exportErr|Could not export the project, nothing was deleted
+t_delErr|Could not delete the project
 t_renamed|Project renamed
 t_dupd|Project duplicated
 t_exported|Export completed
@@ -172,13 +175,19 @@ e_not_found|Project not found
 e_invalid_project|Invalid project data
 e_bad_json|Invalid request
 e_too_large|Data too large
+e_trash_failed|Could not move it to the Recycle Bin
 e_error|Unexpected error
 d_name|Project name
 d_new|New project
 d_rename|Rename project
 d_dup|Duplicate project
 d_delTitle|Delete project
-d_delMsg|Permanently delete "{0}"? This cannot be undone.
+d_delMsg|Do you want to delete "{0}"?
+d_delYes|Yes, delete
+d_del2Title|Delete or export first?
+d_del2Msg|"{0}" will be moved to the Recycle Bin. You can also download a copy as a JSON file before deleting it.
+b_delOnly|Delete
+b_delExport|Export JSON and delete
 b_ok|OK
 b_cancel|Cancel
 b_delete|Delete
@@ -263,8 +272,8 @@ const mk = (o) => ({
   bold: false,
   italic: false,
   align: 'center',
-  stroke: '#374151',
-  sw: 2,
+  stroke: '#a1a1a1',
+  sw: 1,
   radius: 6,
   opacity: 1,
   shape: 'rounded',
@@ -274,7 +283,7 @@ const mkl = (o) => ({
   id: uid(),
   from: '',
   to: '',
-  color: '#4b5563',
+  color: '#a1a1a1',
   width: 2,
   type: 'curve',
   dashed: false,
@@ -282,6 +291,7 @@ const mkl = (o) => ({
   end: 'none',
   text: '',
   bold: false,
+  italic: false,
   ...o,
 });
 const norm = (p) => {
@@ -302,10 +312,10 @@ const rootNode = () =>
     h: 70,
     text: t('central'),
     size: 20,
-    bold: true,
+    bold: false,
     fill: '#1f2937',
     color: '#ffffff',
-    stroke: '#111827',
+    stroke: '#a1a1a1',
   });
 let renaming = false,
   nameT = null,
@@ -417,25 +427,63 @@ const combo = (e) => {
  * GEOMETRY & RENDERING
  * ========================================================== */
 const cv = document.createElement('canvas').getContext('2d');
+const nodeFont = (n) => `${n.italic ? 'italic ' : ''}${n.bold ? 'bold ' : ''}${n.size}px ${n.font}`;
+function wrapText(text, maxW, font) {
+  cv.font = font;
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const word of para.split(' ')) {
+      const tr = line ? line + ' ' + word : word;
+      if (cv.measureText(tr).width <= maxW) {
+        line = tr;
+        continue;
+      }
+      if (line) {
+        out.push(line);
+        line = '';
+      }
+      if (cv.measureText(word).width <= maxW) {
+        line = word;
+        continue;
+      }
+      let part = '';
+      for (const ch of word) {
+        if (part && cv.measureText(part + ch).width > maxW) {
+          out.push(part);
+          part = ch;
+        } else part += ch;
+      }
+      line = part;
+    }
+    out.push(line);
+  }
+  return out;
+}
 function lines(n) {
   const maxW = Math.max(
     10,
     n.w - 24 - (n.shape === 'rect' || n.shape === 'rounded' ? 0 : n.w * 0.12),
   );
-  cv.font = `${n.italic ? 'italic ' : ''}${n.bold ? 'bold ' : ''}${n.size}px ${n.font}`;
-  const out = [];
-  for (const para of String(n.text).split('\n')) {
-    let line = '';
-    for (const w of para.split(' ')) {
-      const tr = line ? line + ' ' + w : w;
-      if (cv.measureText(tr).width > maxW && line) {
-        out.push(line);
-        line = w;
-      } else line = tr;
-    }
-    out.push(line);
-  }
-  return out;
+  return wrapText(n.text, maxW, nodeFont(n));
+}
+/* link label: wraps and the box grows with the text */
+const LBL_SIZE = 14,
+  LBL_PAD = 6,
+  LBL_MAX = 220,
+  LBL_LH = 1.25,
+  LBL_FONT = FONTS[0][0]; /* Sans */
+const lblFont = (l) => `${l.italic ? 'italic ' : ''}${l.bold ? 'bold ' : ''}${LBL_SIZE}px ${LBL_FONT}`;
+function linkBox(l, text) {
+  const font = lblFont(l),
+    ls = wrapText(text == null ? l.text : text, LBL_MAX - LBL_PAD * 2, font);
+  cv.font = font;
+  const tw = Math.max(0, ...ls.map((s) => cv.measureText(s).width));
+  return {
+    ls,
+    w: Math.ceil(tw) + LBL_PAD * 2,
+    h: Math.round(ls.length * LBL_SIZE * LBL_LH) + LBL_PAD * 2,
+  };
 }
 function fitNode(n) {
   cv.font = `${n.italic ? 'italic ' : ''}${n.bold ? 'bold ' : ''}${n.size}px ${n.font}`;
@@ -554,6 +602,23 @@ function cap(c, pt, a, col, w) {
   if (c === 'dot') return `<circle cx="${pt[0]}" cy="${pt[1]}" r="${3 + w}" fill="${col}"/>`;
   return '';
 }
+function linkLabelSVG(l, g) {
+  if (!l.text || editingLink === l.id) return '';
+  const mx = (g.p[0] + g.q[0]) / 2,
+    my = (g.p[1] + g.q[1]) / 2,
+    b = linkBox(l),
+    lh = LBL_SIZE * LBL_LH,
+    y0 = my - (b.ls.length * lh) / 2 + lh / 2;
+  return (
+    `<rect x="${mx - b.w / 2}" y="${my - b.h / 2}" width="${b.w}" height="${b.h}" fill="#ffffff" stroke="none" rx="3"/>` +
+    b.ls
+      .map(
+        (s, k) =>
+          `<text x="${mx}" y="${y0 + k * lh}" text-anchor="middle" dominant-baseline="central" font-family="${esc(LBL_FONT)}" font-size="${LBL_SIZE}" font-weight="${l.bold ? 700 : 400}" font-style="${l.italic ? 'italic' : 'normal'}" fill="#1f2937" style="pointer-events:none;white-space:pre">${esc(s)}</text>`,
+      )
+      .join('')
+  );
+}
 function linkSVG(l, g, s, ex) {
   const c = esc(l.color),
     w = l.width;
@@ -566,16 +631,6 @@ function linkSVG(l, g, s, ex) {
     `<path d="${g.d}" fill="none" stroke="${c}" stroke-width="${w}"${l.dashed ? ` stroke-dasharray="${w * 3} ${w * 2}"` : ''} stroke-linejoin="round"/>` +
     cap(l.start, g.p, g.a1, c, w) +
     cap(l.end, g.q, g.a2, c, w);
-  if (l.text && editingLink !== l.id) {
-    const mx = (g.p[0] + g.q[0]) / 2,
-      my = (g.p[1] + g.q[1]) / 2;
-    const fontSize = 12;
-    cv.font = `${l.bold ? 'bold ' : ''}${fontSize}px sans-serif`;
-    const textWidth = cv.measureText(l.text).width;
-    const pad = 4;
-    h += `<rect x="${mx - textWidth / 2 - pad}" y="${my - fontSize / 2 - pad}" width="${textWidth + pad * 2}" height="${fontSize + pad * 2}" fill="#ffffff" stroke="#ccc" stroke-width="1" rx="3"/>`;
-    h += `<text x="${mx}" y="${my}" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}" font-weight="${l.bold ? 700 : 400}" fill="#1f2937" style="pointer-events:none">${esc(l.text)}</text>`;
-  }
   return ex ? h : `<g data-l="${l.id}" class="lnk">${h}</g>`;
 }
 function overlay() {
@@ -621,7 +676,7 @@ function overlay() {
         e = [conn.x, conn.y];
       h +=
         `<path class="cnl" d="M${p}L${e}" stroke-width="${2 / z}" stroke-dasharray="${6 / z}"/>` +
-        cap('arrow', e, ang(p, e), '#111827', 2 / z);
+        cap('arrow', e, ang(p, e), '#a1a1a1', 2 / z);
       const o = conn.hover && byId(conn.hover);
       if (o)
         h += `<rect class="src" x="${o.x - 6}" y="${o.y - 6}" width="${o.w + 12}" height="${o.h + 12}" rx="8" stroke-width="${2 / z}"/>`;
@@ -647,6 +702,11 @@ function render() {
   }
   for (const n of M.nodes)
     h += `<g data-n="${n.id}" class="node">${nodeSVG(n, editing === n.id)}</g>`;
+  for (const l of M.links) {
+    const g = geo(l),
+      lb = g && linkLabelSVG(l, g);
+    if (lb) h += `<g data-l="${l.id}" class="lnk">${lb}</g>`;
+  }
   w.innerHTML = h + overlay();
   const tr = `translate(${v.x} ${v.y}) scale(${v.z})`;
   w.setAttribute('transform', tr);
@@ -1159,7 +1219,7 @@ function ask(title, label, val) {
     };
   });
 }
-function confirmDlg(title, msg) {
+function confirmDlg(title, msg, label) {
   return new Promise((res) => {
     let done = false;
     const fin = (v) => {
@@ -1173,10 +1233,32 @@ function confirmDlg(title, msg) {
       `<p>${esc(msg)}</p>`,
       [
         { l: t('b_cancel'), f: () => fin(false) },
-        { l: t('b_delete'), c: 'pri', f: () => fin(true) },
+        { l: label || t('b_delete'), c: 'pri', f: () => fin(true) },
       ],
       false,
       () => fin(false),
+    );
+  });
+}
+function deleteChoiceDlg(name) {
+  return new Promise((res) => {
+    let done = false;
+    const fin = (v) => {
+      if (!done) {
+        done = true;
+        res(v);
+      }
+    };
+    modal(
+      t('d_del2Title'),
+      `<p>${esc(t('d_del2Msg', name))}</p>`,
+      [
+        { l: t('b_cancel'), f: () => fin(null) },
+        { l: t('b_delOnly'), f: () => fin('del') },
+        { l: t('b_delExport'), c: 'pri', f: () => fin('exp') },
+      ],
+      false,
+      () => fin(null),
     );
   });
 }
@@ -1330,6 +1412,7 @@ function resetCur() {
   clearTimeout(saveT);
   sel = { n: new Set(), l: null };
   editing = null;
+  editBase = null;
   $('#editor').hidden = true;
   localStorage.removeItem('mLast');
   setStat('none');
@@ -1449,16 +1532,28 @@ async function dupProject(id, name) {
   }
 }
 async function deleteProject(id, name) {
-  if (!(await confirmDlg(t('d_delTitle'), t('d_delMsg', name)))) return;
+  if (!(await confirmDlg(t('d_delTitle'), t('d_delMsg', name), t('d_delYes')))) return;
+  const choice = await deleteChoiceDlg(name);
+  if (!choice) return;
+  if (choice === 'exp') {
+    /* download the JSON first: if that fails, nothing is deleted */
+    try {
+      const open = cur && cur.id === id;
+      const project = open ? proj() : (await api('GET', '/projects/' + encodeURIComponent(id))).project;
+      downloadJson(name, project);
+    } catch (e) {
+      return toast(t('t_exportErr'), 'err');
+    }
+  }
   try {
     await api('DELETE', '/projects/' + encodeURIComponent(id));
     setRecs(recs().filter((x) => x !== id));
     setFavs(favs().filter((x) => x !== id));
     if (cur && cur.id === id) resetCur();
-    toast(t('t_deleted'));
+    toast(t(choice === 'exp' ? 't_deletedExp' : 't_deleted'));
     if (!cur) showHome();
   } catch (e) {
-    err(e, 't_saveErr');
+    err(e, 't_delErr');
   }
 }
 async function manager() {
@@ -1576,10 +1671,10 @@ function thumbSVG(p) {
   const rects = ns
     .map(
       (n) =>
-        `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${Math.min(n.radius || 0, n.h / 2, 14)}" fill="${esc(n.fill || '#fff')}" stroke="${esc(n.stroke || '#9ca3af')}"/>`,
+        `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${Math.min(n.radius || 0, n.h / 2, 14)}" fill="${esc(n.fill || '#fff')}" stroke="${esc(n.stroke || '#a1a1a1')}"/>`,
     )
     .join('');
-  return `<svg viewBox="${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}" preserveAspectRatio="xMidYMid meet"><g stroke="#9ca3af" stroke-width="1">${lines}</g><g stroke-width="1">${rects}</g></svg>`;
+  return `<svg viewBox="${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}" preserveAspectRatio="xMidYMid meet"><g stroke="#a1a1a1" stroke-width="1">${lines}</g><g stroke-width="1">${rects}</g></svg>`;
 }
 function fillThumbs() {
   const by = Object.fromEntries(H.list.map((p) => [p.id, p]));
@@ -1900,30 +1995,102 @@ function desel() {
   hint();
   setSel([]);
 }
-function startEdit(id) {
-  const n = byId(id);
-  if (!n) return;
-  editing = id;
-  if (!sel.n.has(id)) {
-    sel = { n: new Set([id]), l: null };
-    buildPanel();
+let editBase = null;
+function restoreBase() {
+  if (!editBase) return;
+  for (const b of editBase) {
+    const n = byId(b.id);
+    if (n) Object.assign(n, b);
   }
+  editBase = null;
+}
+function placeNodeEditor(n) {
   const v = M.view,
-    ed = $('#editor');
+    ed = $('#editor'),
+    lh = n.size * 1.25,
+    padX = n.shape === 'rect' || n.shape === 'rounded' ? 12 : 12 + n.w * 0.06,
+    nl = lines({ ...n, text: ed.value }).length,
+    padY = Math.max(0, (n.h - nl * lh) / 2);
   Object.assign(ed.style, {
     left: n.x * v.z + v.x + 'px',
     top: n.y * v.z + v.y + 'px',
     width: n.w * v.z + 'px',
     height: n.h * v.z + 'px',
+    boxSizing: 'border-box',
+    border: '0',
+    borderRadius: '8px',
+    boxShadow: '0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent)',
+    padding: `${padY * v.z}px ${padX * v.z}px`,
     fontFamily: n.font,
     fontSize: n.size * v.z + 'px',
+    lineHeight: lh * v.z + 'px',
     fontWeight: n.bold ? 700 : 400,
     fontStyle: n.italic ? 'italic' : 'normal',
     textAlign: n.align,
     color: n.color,
     background: n.fill,
   });
+}
+function placeLinkEditor(l, text) {
+  const g = geo(l);
+  if (!g) return;
+  const mx = (g.p[0] + g.q[0]) / 2,
+    my = (g.p[1] + g.q[1]) / 2,
+    v = M.view,
+    b = linkBox(l, text || ' '),
+    w = Math.max(60, b.w);
+  Object.assign($('#editor').style, {
+    left: mx * v.z + v.x - (w * v.z) / 2 + 'px',
+    top: my * v.z + v.y - (b.h * v.z) / 2 + 'px',
+    width: w * v.z + 'px',
+    height: b.h * v.z + 'px',
+    boxSizing: 'border-box',
+    border: '0',
+    borderRadius: '3px',
+    boxShadow: '0 0 0 2px var(--accent)',
+    padding: LBL_PAD * v.z + 'px',
+    fontFamily: LBL_FONT,
+    fontSize: LBL_SIZE * v.z + 'px',
+    lineHeight: LBL_SIZE * LBL_LH * v.z + 'px',
+    fontWeight: l.bold ? 700 : 400,
+    fontStyle: l.italic ? 'italic' : 'normal',
+    textAlign: 'center',
+    color: '#1f2937',
+    background: '#ffffff',
+  });
+}
+/* the block grows (and, in tidy mode, makes room) while you type */
+function liveFit() {
+  const ed = $('#editor');
+  if (editing) {
+    const n = byId(editing),
+      b0 = editBase && editBase.find((b) => b.id === editing);
+    if (!n || !b0) return;
+    const p = { ...n, text: ed.value, w: b0.w, h: b0.h };
+    if (n.manual) grow(p);
+    else fitNode(p);
+    n.w = p.w;
+    n.h = p.h;
+    if (M.settings.layout === 'tidy') layoutAll();
+    render();
+    placeNodeEditor(n);
+  } else if (editingLink) {
+    const l = M.links.find((x) => x.id === editingLink);
+    if (l) placeLinkEditor(l, ed.value);
+  }
+}
+function startEdit(id) {
+  const n = byId(id);
+  if (!n) return;
+  editing = id;
+  editBase = M.nodes.map((o) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
+  if (!sel.n.has(id)) {
+    sel = { n: new Set([id]), l: null };
+    buildPanel();
+  }
+  const ed = $('#editor');
   ed.value = n.text;
+  placeNodeEditor(n);
   ed.hidden = false;
   render();
   ed.focus();
@@ -1933,34 +2100,10 @@ function startEditLink(id) {
   const l = M.links.find((x) => x.id === id);
   if (!l) return;
   editingLink = id;
-  const g = geo(l);
-  if (!g) return;
-  const mx = (g.p[0] + g.q[0]) / 2,
-    my = (g.p[1] + g.q[1]) / 2;
-  const v = M.view,
-    ed = $('#editor');
-  const fontSize = 12;
-  cv.font = `${l.bold ? 'bold ' : ''}${fontSize}px sans-serif`;
-  const textWidth = cv.measureText(l.text || ' ').width;
-  const pad = 4;
-  const w = Math.max(50, textWidth + pad * 2),
-    h = fontSize + pad * 2;
-  Object.assign(ed.style, {
-    left: mx * v.z + v.x - (w * v.z) / 2 + 'px',
-    top: my * v.z + v.y - (h * v.z) / 2 + 'px',
-    width: w * v.z + 'px',
-    height: h * v.z + 'px',
-    fontFamily: 'sans-serif',
-    fontSize: fontSize * v.z + 'px',
-    fontWeight: l.bold ? 700 : 400,
-    fontStyle: 'normal',
-    textAlign: 'center',
-    color: '#1f2937',
-    background: '#ffffff',
-    border: '1px solid #ccc',
-    borderRadius: '3px',
-  });
+  if (!geo(l)) return;
+  const ed = $('#editor');
   ed.value = l.text;
+  placeLinkEditor(l, l.text);
   ed.hidden = false;
   render();
   buildFbar();
@@ -1973,6 +2116,7 @@ function commitEdit() {
   editing = null;
   const ed = $('#editor');
   ed.hidden = true;
+  restoreBase();
   const n = byId(id);
   if (n && ed.value !== n.text) {
     snapshot();
@@ -2000,6 +2144,7 @@ function commitEditLink() {
   buildPanel();
 }
 function cancelEdit() {
+  restoreBase();
   editing = null;
   editingLink = null;
   $('#editor').hidden = true;
@@ -2023,6 +2168,16 @@ $('#editor').addEventListener('keydown', (e) => {
     e.preventDefault();
     commitEdit();
     child(true);
+  } else if ((c === 'Ctrl+B' || c === 'Ctrl+I') && editingLink) {
+    e.preventDefault();
+    const l = M.links.find((x) => x.id === editingLink),
+      k = c === 'Ctrl+B' ? 'bold' : 'italic';
+    if (l) {
+      snapshot();
+      l[k] = !l[k];
+      markDirty();
+      placeLinkEditor(l, $('#editor').value);
+    }
   } else if (c === 'Ctrl+B' || c === 'Ctrl+I') {
     e.preventDefault();
     const id = editing,
@@ -2035,12 +2190,14 @@ $('#editor').addEventListener('keydown', (e) => {
       ed.style.fontWeight = n.bold ? 700 : 400;
       ed.style.fontStyle = n.italic ? 'italic' : 'normal';
       ed.value = v;
+      liveFit();
     }
   } else if (c === 'Ctrl+Shift+E' && !editingLink) {
     e.preventDefault();
     fmtCenter();
   }
 });
+$('#editor').addEventListener('input', liveFit);
 $('#editor').addEventListener('blur', () => {
   if (editing) commitEdit();
   if (editingLink) commitEditLink();
@@ -2093,6 +2250,8 @@ const fld = (k, h) => `<label class="f"><span>${t(k)}</span>${h}</label>`;
 const inp = (ty, p, v, x = '') => `<input type="${ty}" data-p="${p}" value="${esc(v)}" ${x}>`;
 const sl = (p, v, o, x = '') =>
   `<select data-p="${p}"${x}>${v === '' || v == null ? '<option value="" selected></option>' : ''}${o.map(([a, b]) => `<option value="${esc(a)}"${a === v ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select>`;
+const cfield = (p, v, x = '') =>
+  `<button type="button" class="cs" data-cp="${p}" style="background:${esc(v)}" title="${esc(v)}"${x}></button>`;
 const CAPS = () => ['none', 'arrow', 'dot'].map((c) => [c, t('c_' + c)]);
 function buildPanel() {
   const ns = [...sel.n].map(byId).filter(Boolean),
@@ -2107,9 +2266,9 @@ function buildPanel() {
       ) +
       fld(
         'p_style',
-        `<button data-b="bold" class="${l.bold ? 'on' : ''}" title="${t('a_bold')}"><b>B</b></button>`,
+        `<div class="seg"><button data-b="bold" class="${l.bold ? 'on' : ''}" title="${t('a_bold')}"><b>B</b></button><button data-b="italic" class="${l.italic ? 'on' : ''}" title="${t('a_italic')}"><i>I</i></button></div>`,
       ) +
-      fld('p_color', inp('color', 'color', l.color)) +
+      fld('p_color', cfield('color', l.color)) +
       fld('p_width', inp('number', 'width', l.width, 'min="1" max="30"')) +
       fld(
         'p_type',
@@ -2135,8 +2294,8 @@ function buildPanel() {
       (ns.length <= 1
         ? fld('p_text', `<textarea data-p="text" rows="3"${off}>${esc(v('text'))}</textarea>`)
         : '') +
-      fld('p_fill', inp('color', 'fill', v('fill', gray), off)) +
-      fld('p_tcolor', inp('color', 'color', v('color', gray), off)) +
+      fld('p_fill', cfield('fill', v('fill', gray), off)) +
+      fld('p_tcolor', cfield('color', v('color', gray), off)) +
       fld(
         'p_shape',
         sl(
@@ -2163,7 +2322,7 @@ function buildPanel() {
             .join('') +
           '</div>',
       ) +
-      fld('p_stroke', inp('color', 'stroke', v('stroke', gray), off)) +
+      fld('p_stroke', cfield('stroke', v('stroke', gray), off)) +
       fld('p_sw', inp('number', 'sw', v('sw'), 'min="0" max="30"' + off)) +
       fld('p_radius', inp('number', 'radius', v('radius'), 'min="0" max="200"' + off)) +
       `<button class="btn" data-act="autofit"${off}>${t('a_autofit')}</button>`;
@@ -2192,7 +2351,8 @@ $('#props').addEventListener('click', (e) => {
       const l = M.links.find((x) => x.id === sel.l);
       if (l) {
         snapshot();
-        l.bold = !l.bold;
+        const k = b.dataset.b === 'italic' ? 'italic' : 'bold';
+        l[k] = !l[k];
         render();
         markDirty();
         buildPanel();
@@ -2218,7 +2378,7 @@ function buildFbar() {
     l = sel.l && M.links.find((x) => x.id === sel.l);
   let h = '';
   if (l)
-    h = `<button data-lk="bold" title="${t('a_bold')}"><b>B</b></button><input type="color" data-p="color" value="${esc(l.color)}" title="${t('p_color')}"><button data-lk="text" title="${t('p_linkText')}">T</button><button data-lk="end" title="${t('p_end')}">→</button><button data-lk="dashed" title="${t('p_dashed')}">┅</button>`;
+    h = `<button data-lk="bold" title="${t('a_bold')}"><b>B</b></button><button data-lk="italic" title="${t('a_italic')}"><i>I</i></button><button type="button" class="cs" data-cp="color" style="background:${esc(l.color)}" title="${t('p_color')}"></button><button data-lk="text" title="${t('p_linkText')}">T</button><button data-lk="end" title="${t('p_end')}">→</button><button data-lk="dashed" title="${t('p_dashed')}">┅</button>`;
   else if (ns.length) {
     const n = ns[0];
     h = `<button data-b="bold" title="${t('a_bold')}"><b>B</b></button><button data-b="italic" title="${t('a_italic')}"><i>I</i></button>`;
@@ -2295,11 +2455,155 @@ $('#fbar').addEventListener('click', (e) => {
     if (b.dataset.lk === 'end') l.end = l.end === 'arrow' ? 'none' : 'arrow';
     else if (b.dataset.lk === 'text') startEditLink(l.id);
     else if (b.dataset.lk === 'bold') l.bold = !l.bold;
+    else if (b.dataset.lk === 'italic') l.italic = !l.italic;
     else l.dashed = !l.dashed;
     render();
     markDirty();
     buildPanel();
   }
+});
+/* ==========================================================
+ * COLOR PICKER (always hexadecimal)
+ * ========================================================== */
+const PALETTE = [
+  '#000000', '#1f2937', '#374151', '#6b7280', '#a1a1a1', '#d3d3d3', '#f3f4f6', '#ffffff',
+  '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4',
+  '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#ec4899', '#f43f5e', '#92400e', '#065f46',
+];
+const normHex = (c) => {
+  c = String(c || '').trim().toLowerCase();
+  if (/^[0-9a-f]{3}$|^[0-9a-f]{6}$/.test(c)) c = '#' + c;
+  if (/^#[0-9a-f]{3}$/.test(c)) c = '#' + [...c.slice(1)].map((x) => x + x).join('');
+  return /^#[0-9a-f]{6}$/.test(c) ? c : null;
+};
+const hex2hsv = (hex) => {
+  const v = parseInt(hex.slice(1), 16),
+    r = (v >> 16) / 255,
+    g = ((v >> 8) & 255) / 255,
+    b = (v & 255) / 255,
+    mx = Math.max(r, g, b),
+    d = mx - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, mx ? d / mx : 0, mx];
+};
+const hsv2hex = (h, s, v) => {
+  const f = (n) => {
+    const k = (n + h / 60) % 6;
+    return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+  };
+  return '#' + [f(5), f(3), f(1)].map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+};
+let cp = null;
+function cpCurrent(prop) {
+  const l = sel.l && M.links.find((x) => x.id === sel.l),
+    o = l || byId([...sel.n][0]);
+  return normHex(o && o[prop]) || '#ffffff';
+}
+function cpPaint(fromInput) {
+  const pop = $('#cpop'),
+    hex = hsv2hex(cp.h, cp.s, cp.v),
+    sv = pop.querySelector('.cp-sv');
+  sv.style.background = `linear-gradient(to top,#000,#0000),linear-gradient(to right,#fff,${hsv2hex(cp.h, 1, 1)})`;
+  const dot = sv.querySelector('.cp-dot');
+  dot.style.left = cp.s * 100 + '%';
+  dot.style.top = (1 - cp.v) * 100 + '%';
+  pop.querySelector('.cp-hue').value = Math.round(cp.h);
+  if (!fromInput) pop.querySelector('.cp-hex').value = hex;
+  return hex;
+}
+function cpApply(hex) {
+  applyProp(cp.prop, hex);
+  document.querySelectorAll(`.cs[data-cp="${cp.prop}"]`).forEach((b) => {
+    b.style.background = hex;
+    b.title = hex;
+  });
+}
+function cpSet(h, s, v, fromInput, exact) {
+  cp.h = h;
+  cp.s = s;
+  cp.v = v;
+  const hex = cpPaint(fromInput);
+  cpApply(exact || hex);
+  if (exact && !fromInput) $('#cpop .cp-hex').value = exact;
+}
+function closeCP() {
+  cp = null;
+  const pop = $('#cpop');
+  if (pop) pop.hidden = true;
+}
+function openCP(btn) {
+  const pop = $('#cpop'),
+    hex = cpCurrent(btn.dataset.cp),
+    [h, s, v] = hex2hsv(hex);
+  cp = { prop: btn.dataset.cp, h, s, v, btn };
+  pop.innerHTML =
+    '<div class="cp-sv"><i class="cp-dot"></i></div>' +
+    '<input type="range" class="cp-hue" min="0" max="360" step="1">' +
+    '<input type="text" class="cp-hex" maxlength="7" spellcheck="false" autocomplete="off">' +
+    '<div class="cp-pal">' +
+    PALETTE.map((c) => `<button type="button" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('') +
+    '</div>';
+  pop.hidden = false;
+  cpPaint(false);
+  const r = btn.getBoundingClientRect(),
+    pw = pop.offsetWidth,
+    ph = pop.offsetHeight;
+  let y = r.bottom + 6;
+  if (y + ph > innerHeight - 8) y = Math.max(8, r.top - ph - 6);
+  pop.style.left = Math.max(8, Math.min(innerWidth - pw - 8, r.left)) + 'px';
+  pop.style.top = y + 'px';
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.cs');
+  if (!b || b.disabled) return;
+  const same = cp && cp.btn === b && !$('#cpop').hidden;
+  closeCP();
+  if (!same) openCP(b);
+});
+document.addEventListener('pointerdown', (e) => {
+  if (cp && !e.target.closest('#cpop, .cs')) closeCP();
+});
+$('#cpop').addEventListener('pointerdown', (e) => {
+  const sv = e.target.closest('.cp-sv');
+  if (!sv || !cp) return;
+  const mv = (ev) => {
+    const r = sv.getBoundingClientRect();
+    cpSet(
+      cp.h,
+      Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)),
+      1 - Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)),
+      false,
+    );
+  };
+  sv.setPointerCapture(e.pointerId);
+  mv(e);
+  sv.onpointermove = mv;
+  sv.onpointerup = () => {
+    sv.onpointermove = sv.onpointerup = null;
+  };
+});
+$('#cpop').addEventListener('input', (e) => {
+  if (!cp) return;
+  if (e.target.classList.contains('cp-hue')) cpSet(+e.target.value, cp.s, cp.v, false);
+  else if (e.target.classList.contains('cp-hex')) {
+    const hex = normHex(e.target.value);
+    if (!hex) return;
+    const [h, s, v] = hex2hsv(hex);
+    cpSet(s ? h : cp.h, s, v, true, hex);
+  }
+});
+$('#cpop').addEventListener('change', (e) => {
+  if (cp && e.target.classList.contains('cp-hex')) e.target.value = hsv2hex(cp.h, cp.s, cp.v);
+});
+$('#cpop').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === 'Enter') closeCP();
+});
+$('#cpop').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-c]');
+  if (!b || !cp) return;
+  const [h, s, v] = hex2hsv(b.dataset.c);
+  cpSet(s ? h : cp.h, s, v, false, b.dataset.c);
 });
 /* ==========================================================
  * VIEW
@@ -2342,7 +2646,7 @@ function fit() {
   if (!b) {
     M.view = { x: r.width / 2, y: r.height / 2, z: 1 };
   } else {
-    const z = Math.min(1.5, Math.max(0.1, Math.min(r.width / (b.w + 160), r.height / (b.h + 160))));
+    const z = Math.min(1, Math.max(0.1, Math.min(r.width / (b.w + 160), r.height / (b.h + 160))));
     M.view = { z, x: r.width / 2 - (b.x + b.w / 2) * z, y: r.height / 2 - (b.y + b.h / 2) * z };
   }
   render();
@@ -2378,6 +2682,10 @@ function svgStr() {
     if (g) s += linkSVG(l, g, false, true);
   }
   for (const n of M.nodes) s += nodeSVG(n, false);
+  for (const l of M.links) {
+    const g = geo(l);
+    if (g) s += linkLabelSVG(l, g);
+  }
   return s + '</svg>';
 }
 function preview() {
@@ -2494,18 +2802,14 @@ function exportPdf() {
   img.onerror = () => toast(t('e_error'), 'err');
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr());
 }
-function exportJson() {
-  if (!need()) return;
+function downloadJson(name, project) {
+  const file = (String(name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'mindly') + '.json';
   dl(
-    fname('json'),
+    file,
     new Blob(
       [
         JSON.stringify(
-          {
-            format: 'mindly',
-            metadata: { name: cur.name, exported: new Date().toISOString() },
-            project: proj(),
-          },
+          { format: 'mindly', metadata: { name, exported: new Date().toISOString() }, project },
           null,
           1,
         ),
@@ -2513,6 +2817,10 @@ function exportJson() {
       { type: 'application/json' },
     ),
   );
+}
+function exportJson() {
+  if (!need()) return;
+  downloadJson(cur.name, proj());
   toast(t('t_exported'));
 }
 function exportSvg() {
@@ -2739,6 +3047,15 @@ function subtree(ids) {
 const GX = 70,
   GY = 18;
 function layoutAll() {
+  const inL = new Map();
+  for (const l of M.links)
+    if (l.text && byId(l.from) && byId(l.to)) {
+      const b = linkBox(l),
+        o = inL.get(l.to);
+      if (!o || b.w > o.w) inL.set(l.to, b);
+    }
+  const gx = (c) => Math.max(GX, inL.has(c.id) ? inL.get(c.id).w + 40 : 0),
+    eh = (n) => Math.max(n.h, inL.has(n.id) ? inL.get(n.id).h + 8 : 0);
   const T = new Map(),
     Hm = new Map(),
     seen = new Set();
@@ -2761,7 +3078,7 @@ function layoutAll() {
   };
   const hg = (n) => {
     if (Hm.has(n.id)) return Hm.get(n.id);
-    const h = Math.max(n.h, tot(T.get(n.id)));
+    const h = Math.max(eh(n), tot(T.get(n.id)));
     Hm.set(n.id, h);
     return h;
   };
@@ -2772,7 +3089,7 @@ function layoutAll() {
     n.y = top + (h - n.h) / 2;
     let y = top + (h - tot(k)) / 2;
     for (const c of k) {
-      c.x = dir === 'r' ? n.x + n.w + GX : n.x - GX - c.w;
+      c.x = dir === 'r' ? n.x + n.w + gx(c) : n.x - gx(c) - c.w;
       place(c, dir, y);
       y += hg(c) + GY;
     }
@@ -2793,7 +3110,7 @@ function layoutAll() {
         H = tot(g);
       let y = r.y + r.h / 2 - H / 2;
       for (const c of g) {
-        c.x = dir === 'r' ? r.x + r.w + GX : r.x - GX - c.w;
+        c.x = dir === 'r' ? r.x + r.w + gx(c) : r.x - gx(c) - c.w;
         place(c, dir, y);
         y += hg(c) + GY;
       }
@@ -2816,10 +3133,10 @@ const titleOpts = () => ({
   w: 170,
   h: 70,
   size: 20,
-  bold: true,
+  bold: false,
   fill: '#1f2937',
   color: '#ffffff',
-  stroke: '#111827',
+  stroke: '#a1a1a1',
 });
 function freeSpot(w, h, c) {
   c = c || centerW();

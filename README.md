@@ -58,6 +58,7 @@ Mindly/
 │   ├── index.html     ← page structure
 │   ├── style.css      ← visual appearance (light and dark theme)
 │   └── app.js         ← all the editor's logic
+├── MINDLY_MODFICHE.txt ← list of the latest requested changes
 └── projects/          ← your projects (empty at first)
     ├── Project_Name/
     │   ├── project.json    ← the map (blocks, links, settings, view)
@@ -185,7 +186,7 @@ For each project:
 | **Open** | click the name or the *Open* button |
 | **Rename** | ✎ button |
 | **Duplicate** | ⧉ button (asks for the name of the copy, suggested as "Copy of …") |
-| **Delete** | ✕ button (always asks for confirmation; the operation cannot be undone) |
+| **Delete** | ✕ button, with a **double confirmation**: first *"Do you want to delete …?"*, then a choice between **Delete**, **Export JSON and delete** (the `.json` file is downloaded first; if the export fails nothing is deleted) and **Cancel**. The project folder is **moved to the computer's Recycle Bin** (Trash on macOS/Linux), not erased: you can restore it from there |
 
 ### New project
 
@@ -237,7 +238,7 @@ Important details:
 
 ### Title block
 
-It has a different style from the normal block: **dark gray (almost black)** background, **white** text, **bold**, larger font (20 px). It serves as the main block of the map. You can create as many as you want.
+It has a different style from the normal block: **dark gray (almost black)** background, **white** text, **not bold by default** (you can turn bold on with **B** or `Ctrl + B`), larger font (20 px), `#a1a1a1` border. It serves as the main block of the map. You can create as many as you want.
 
 **Project name sync:** the default title block (the one created with a new project) is linked to the project name. When you edit its text, the project name changes too: top bar, browser tab title, Projects window and the project folder. The name is cut to 60 characters and line breaks become spaces; if you delete all the text the name stays as it was. Extra title blocks created with `T`, and pasted or duplicated ones, do not change the name. Projects created with older versions have no default title block: use *Rename project* for them.
 
@@ -272,7 +273,7 @@ Blocks **fit themselves to the text**:
 
 - Width ranges from about **90 px** to about **340 px**.
 - If the text is longer, it wraps and the block grows in height.
-- Fitting happens when you change text, font size, font, bold, italic or shape.
+- Fitting happens when you change text, font size, font, bold, italic or shape, and **live while you type**: the block grows with the text and long words are broken so nothing overflows. Use `Shift + Enter` for a new line (`Enter` confirms).
 - New blocks are born already the right size.
 - If you resize a block **manually** (dragging an edge or typing width/height), that block **keeps the chosen size** (it only grows in height if the text no longer fits).
 - To return to automatic fitting: select the block and press **Fit to text** at the bottom of the Properties panel.
@@ -321,7 +322,7 @@ You cannot attach a block to one of its own descendants (it would create a close
 
 ### Default block style
 
-White background, dark gray text, 2 px dark gray border, Sans font at 16 px, centered text, 100% opacity.
+White background, dark gray text, **1 px** border in `#a1a1a1`, Sans font at 16 px, centered text, 100% opacity.
 
 ---
 
@@ -351,13 +352,13 @@ A link goes **from** a block (parent) **to** a block (child). Direction matters 
 | Property | Options |
 |---|---|
 | **Type** | Straight line, **Curve** (default), Orthogonal |
-| **Color** | any |
+| **Color** | any (default `#a1a1a1`), chosen with the built-in hex color picker |
 | **Thickness** | from 1 to 30 |
 | **Dashed** | yes / no |
 | **Start end** | None, Arrow, Dot |
 | **End end** | None, Arrow, Dot |
 
-New links have no arrowhead. Lines **automatically follow** the blocks when you move or resize them.
+New links have no arrowhead and are `#a1a1a1` (arrowheads included). The text shown above a link is slightly larger (14 px), has no border, can be **bold** and *italic* (B / I in the Properties panel, the quick bar, or `Ctrl + B` / `Ctrl + I` while typing it), uses the Sans font like every other text, wraps onto several lines when long (the box grows with it) and is always drawn **on top of the blocks**. In tidy mode the blocks move apart horizontally to make room for it. All colors are shown and edited in hexadecimal (e.g. `#d3d3d3`), never RGB: clicking a color swatch opens a picker with a hex field, a hue slider and a preset palette. Lines **automatically follow** the blocks when you move or resize them.
 
 ### Editing or deleting a link
 
@@ -411,7 +412,7 @@ Blocks stay **exactly where you put them**, with no automatic rearrangement.
 - **`Ctrl + wheel`**: zoom around the pointer. **The wheel alone does not zoom.**
 - **`+`** and **`-`** keys (or `Ctrl++` and `Ctrl+-`), **+** and **−** buttons.
 - **`0`** key: resets to 100%.
-- **`1`** key or **`Ctrl+0`** or the **⤢** button: fits the map to the screen (maximum zoom 150% in this function).
+- **`1`** key or **`Ctrl+0`** or the **⤢** button: fits the map to the screen (maximum zoom 100% in this function: a small map is never enlarged beyond 100%).
 - Zoom range: from **10%** to **400%**.
 - The percentage is always visible in the toolbar and at the bottom right.
 
@@ -749,15 +750,15 @@ Contains everything needed to rebuild the map:
       "text": "Central idea",
       "fill": "#6366f1", "color": "#ffffff",
       "font": "Segoe UI, Arial, sans-serif", "size": 20,
-      "bold": true, "italic": false, "align": "center",
-      "stroke": "#4f46e5", "sw": 2, "radius": 6,
+      "bold": false, "italic": false, "align": "center",
+      "stroke": "#a1a1a1", "sw": 1, "radius": 6,
       "opacity": 1, "shape": "rounded"
     }
   ],
   "links": [
     {
       "id": "e5f6g7h8", "from": "a1b2c3d4", "to": "i9j0k1l2",
-      "color": "#64748b", "width": 2, "type": "curve",
+      "color": "#a1a1a1", "width": 2, "type": "curve",
       "dashed": false, "start": "none", "end": "none"
     }
   ],
@@ -824,7 +825,7 @@ To make a backup, just **copy the `projects/` folder** (or the folder of a singl
 | `POST` | `/api/projects` | creates a project (`name`, optional `project`) |
 | `GET` | `/api/projects/<id>` | reads a project (metadata and map) |
 | `PUT` | `/api/projects/<id>` | saves the map |
-| `DELETE` | `/api/projects/<id>` | deletes the project |
+| `DELETE` | `/api/projects/<id>` | moves the project folder to the Recycle Bin |
 | `POST` | `/api/projects/<id>/rename` | renames (`name`) |
 | `POST` | `/api/projects/<id>/duplicate` | duplicates (`name`) |
 
