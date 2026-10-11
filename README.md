@@ -75,7 +75,6 @@ Mindly/
 │   ├── index.html     ← page structure
 │   ├── style.css      ← visual appearance (light and dark theme)
 │   └── app.js         ← all the editor's logic
-├── MINDLY_MODFICHE.txt ← list of the latest requested changes
 └── projects/          ← your projects (empty at first)
     ├── Project_Name/
     │   ├── project.json    ← the map (blocks, links, settings, view)
