@@ -1913,3 +1913,234 @@ kbd {
   text-align: center;
   font-size: 14px;
 }
+
+/* ============================================================
+   Page switcher: a small floating pill, bottom-left of the work area
+   ============================================================ */
+#pagebar {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 3px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+#pagebar:hover,
+#pagebar:focus-within {
+  opacity: 1;
+}
+#pagebar[hidden] {
+  display: none;
+}
+#pagebar button {
+  height: 24px;
+  min-width: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+#pagebar button:hover {
+  background: var(--hover);
+}
+.pg-cur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+}
+.pg-cur span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pg-cur small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.pg-cur i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+}
+.pg-add {
+  color: var(--muted) !important;
+}
+
+/* page panel (opens above the pill) */
+#pgpanel {
+  position: absolute;
+  left: 10px;
+  bottom: 48px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  max-height: calc(100% - 70px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+#pgpanel[hidden] {
+  display: none;
+}
+.pg-list {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px;
+}
+.pg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 6px 0 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  border-top: 2px solid transparent;
+}
+.pg-row:hover {
+  background: var(--hover);
+}
+.pg-row.on .pg-n {
+  font-weight: 600;
+}
+.pg-row.over {
+  border-top-color: var(--accent);
+}
+.pg-ck {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pg-n {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pg-ico {
+  display: flex;
+  flex: none;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.pg-row:hover .pg-ico,
+.pg-row:focus-within .pg-ico {
+  opacity: 1;
+}
+.pg-ico button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.pg-ico button:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.pg-new {
+  flex: none;
+  width: 100%;
+  height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.pg-new:hover {
+  background: var(--hover);
+}
+
+/* Project header: Info and theme buttons, identical to the home ones */
+header .hdr-circle {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--elev-1);
+  color: var(--text);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+header .hdr-circle svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+header .hdr-circle:hover {
+  background: var(--toolbar);
+  box-shadow: var(--elev-2);
+}
+.hdr-menu {
+  position: fixed;
+  top: 58px;
+  right: 16px;
+  z-index: 60;
+  min-width: 230px;
+  background: var(--surface, var(--panel));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+  animation: pop 0.12s ease;
+}
+.hdr-menu[hidden] {
+  display: none;
+}
+.hdr-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.hdr-menu button:hover {
+  background: var(--toolbar);
+}
+.hdr-menu svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  flex: none;
+}

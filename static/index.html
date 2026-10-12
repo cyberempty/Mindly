@@ -9,7 +9,7 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🧠%3C/text%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="style.css?v=18" />
+    <link rel="stylesheet" href="style.css?v=23" />
   </head>
   <body>
     <header id="top">
@@ -19,8 +19,10 @@
       <span id="savestat" class="stat"></span>
       <span class="sp"></span>
       <button id="btnProjects" data-act="projects"></button>
-      <button id="theme" data-act="theme"></button>
+      <button id="btnHelp" class="hdr-circle" data-hdr="help"></button>
+      <button id="theme" class="hdr-circle" data-act="theme"></button>
     </header>
+    <div id="pmenu" class="hdr-menu" hidden></div>
     <div id="toolbar">
       <div id="tbbtns"></div>
       <div id="props"></div>
@@ -58,6 +60,8 @@
           <button type="button" data-ns="next">↓</button>
           <button type="button" data-ns="clear">✕</button>
         </div>
+        <div id="pagebar" hidden></div>
+        <div id="pgpanel" hidden></div>
         <div id="fbar" hidden></div>
         <textarea id="editor" hidden spellcheck="false"></textarea>
       </div>
@@ -70,7 +74,7 @@
     <div id="ctx" hidden></div>
     <div id="cpop" hidden></div>
     <div id="modal" hidden></div>
-    <input type="file" id="file" accept=".json,application/json" hidden />
-    <script src="app.js?v=18"></script>
+    <input type="file" id="file" accept=".json,.xmind,.mm,.opml,.xml,.md,.markdown,.txt,application/json" hidden />
+    <script src="app.js?v=23"></script>
   </body>
 </html>

@@ -42,11 +42,15 @@ a_close|Close project
 a_rename|Rename project…
 a_export|Export
 a_import|Import…
-a_importProj|Import project
+a_importProj|Import a map (JSON, XMind, FreeMind, OPML, Markdown)
 a_exportJson|Export JSON
 a_exportSvg|Export SVG
 a_exportPng|Export PNG
 a_exportPdf|Export PDF
+a_exportXmind|Export XMind (.xmind)
+a_exportFreemind|Export FreeMind (.mm)
+a_exportOpml|Export OPML (.opml)
+a_exportMd|Export Markdown (.md)
 a_undo|Undo
 a_redo|Redo
 a_redo2|Redo (alternative)
@@ -211,6 +215,23 @@ a_new1|New
 a_new2|project
 a_imp1|Import
 a_imp2|project
+a_newPage|New page
+a_pagePrev|Previous page
+a_pageNext|Next page
+pg_default|Page {0}
+pg_newTitle|New page
+pg_renTitle|Rename page
+pg_delTitle|Delete page
+pg_delMsg|Delete the page "{0}" and all its blocks? This cannot be undone.
+pg_last|A project needs at least one page.
+pg_ren|Rename
+pg_dup|Duplicate
+pg_drag|Drag to reorder
+pg_del|Delete
+pg_copy|{0} (copy)
+pg_name|Page name
+pg_all|Pages
+pg_max|A project can have at most 100 pages.
 a_find|Find in map…
 a_path|Project path…
 a_collapse|Collapse branch
@@ -231,7 +252,7 @@ pm_created|Created
 pm_modified|Modified
 hm_create|Create a new mind map
 hm_new|Create new mind map
-hm_import|Import JSON
+hm_import|Import map
 hm_yours|Your mind maps
 hm_all|All
 hm_recent|Recent
@@ -250,7 +271,7 @@ pi_export|Export
 pi_whatV|A local editor for mind maps and diagrams.
 pi_whereV|Your mind maps are saved as folders inside the "projects" folder next to the program. Nothing leaves your computer.
 pi_reqV|Python 3 only, no other dependencies.
-pi_exportV|SVG, PNG, PDF and JSON backup (File > Export). JSON files are named NAME_Mindly.json.
+pi_exportV|SVG, PNG, PDF, JSON backup, XMind, FreeMind, OPML and Markdown (File > Export). XMind, FreeMind, OPML and Markdown can also be imported (File > Import). SVG, PNG and PDF create one file per page, named after the page's first block. JSON files are named NAME_Mindly.json.
 lic_more|Read more about the MIT license:
 a_msRight|Select multiple nodes (rectangle)
 a_license|License
@@ -621,6 +642,8 @@ const SC = [
   ['g_view', 'Ctrl++', 'zoomIn'],
   ['g_view', 'Ctrl+-', 'zoomOut'],
   ['g_view', 'Ctrl+0', 'fitView'],
+  ['g_view', 'Shift+PageUp', 'pagePrev'],
+  ['g_view', 'Shift+PageDown', 'pageNext'],
   ['g_view', 'F11', 'full'],
   ['g_help', 'F1', 'shortcuts'],
   ['g_help', '?', 'shortcuts2'],
@@ -972,6 +995,7 @@ function render() {
   $('#zf').textContent = z;
   $('#stats').textContent = t('p_stats', M.nodes.length, M.links.length);
   $('#home').hidden = !!cur;
+  $('#pagebar').hidden = !cur;
   if (!cur && nsOpen) searchOpen(false);
   svg.classList.toggle('tl', tool === 'link');
   svg.classList.toggle('pan', space);
@@ -1262,7 +1286,7 @@ const MENUS = [
     'm_edit',
     ['undo', 'redo', '-', 'cut', 'copy', 'paste', 'dup', 'del', '-', 'selAll', 'desel', '-', 'find'],
   ],
-  ['m_insert', ['root', 'node', 'child', 'childLeft', 'sibling', 'link']],
+  ['m_insert', ['root', 'node', 'child', 'childLeft', 'sibling', 'link', '-', 'newPage']],
   [
     'm_view',
     [
@@ -1271,6 +1295,9 @@ const MENUS = [
       'zoomOut',
       'zoomReset',
       'fit',
+      '-',
+      'pagePrev',
+      'pageNext',
       '-',
       'grid',
       'snap',
@@ -1332,7 +1359,10 @@ function buildUI() {
         `<button data-shape="${s}" title="${t('s_' + s)}"><i class="shi sh-${s}"></i></button>`,
     ).join('');
   $('#theme').title = t('a_theme');
-  $('#theme').textContent = theme === 'dark' ? '☀' : '☾';
+  $('#theme').textContent = theme === 'dark' ? '☾' : '☀'; /* same glyphs as the home button */
+  $('#btnHelp').title = t('hm_help');
+  $('#btnHelp').innerHTML = svgIc(IC.help);
+  $('#pmenu').innerHTML = `<button data-hm-act="about">${svgIc(IC.info)}<span>${t('hm_info')}</span></button><button data-hm-act="license">${svgIc(IC.doc)}<span>${t('hm_license')}</span></button><button data-hm-act="shortcuts">${svgIc(IC.kbd)}<span>${t('hm_shortcuts')}</span></button>`;
   $('#btnProjects').textContent = t('a_projects');
   $('#pname').title = t('a_rename');
   $('#nsq').placeholder = t('s_ph');
@@ -1341,6 +1371,7 @@ function buildUI() {
   $('#nsearch [data-ns="next"]').title = t('s_next');
   $('#nsearch [data-ns="clear"]').title = t('s_clear');
   buildHome();
+  pagesRender();
   updTitle();
   setStat(st);
   hint();
@@ -1579,6 +1610,208 @@ function showShortcuts() {
   modal(t('a_shortcuts'), h + '</div>', [{ l: t('b_close'), c: 'pri' }], true);
 }
 /* ==========================================================
+ * PAGES
+ * A project has one or more pages. M.nodes / M.links / M.view always hold the ACTIVE page;
+ * PG.list keeps every page (the active page's entry is refreshed by pagesSync()).
+ * In project.json the top-level nodes / links / view are the active page and `pages` lists the others.
+ * ========================================================== */
+let PG = { list: [], active: '' };
+const pageById = (id) => PG.list.find((p) => p.id === id);
+function pagesSync() {
+  const a = pageById(PG.active);
+  if (a) {
+    a.nodes = M.nodes;
+    a.links = M.links;
+    a.view = M.view;
+  }
+}
+function pagesLoad(p) {
+  const raw = Array.isArray(p.pages) ? p.pages.filter((x) => x && typeof x === 'object') : [];
+  if (!raw.length) {
+    PG.list = [{ id: uid(), name: t('pg_default', 1), nodes: M.nodes, links: M.links, view: M.view }];
+    PG.active = PG.list[0].id;
+    return;
+  }
+  const act = raw.find((x) => x.id === p.activePage) || raw[0],
+    seen = new Set();
+  PG.list = raw.map((x, i) => {
+    let id = String(x.id || uid());
+    if (seen.has(id)) id = uid();
+    seen.add(id);
+    const on = x === act;
+    return {
+      id,
+      name: String(x.name || '').trim().slice(0, 60) || t('pg_default', i + 1),
+      nodes: on ? M.nodes : (x.nodes || []).map(mk),
+      links: on ? M.links : (x.links || []).map(mkl),
+      view: on ? M.view : x.view ? { ...blank().view, ...x.view } : null,
+    };
+  });
+  PG.active = PG.list[raw.indexOf(act)].id;
+}
+function pagesRender() {
+  const b = $('#pagebar');
+  if (!cur || !pageById(PG.active)) {
+    b.innerHTML = '';
+    pagePanel(false);
+    return;
+  }
+  const pg = pageById(PG.active),
+    many = PG.list.length > 1,
+    nav = (d, ch, k) =>
+      many ? `<button type="button" class="pg-nav" data-pgstep="${d}" title="${esc(t(k))}">${ch}</button>` : '';
+  b.innerHTML =
+    nav(-1, '‹', 'a_pagePrev') +
+    `<button type="button" class="pg-cur" data-pgmenu title="${esc(pg.name)}"><span>${esc(pg.name)}</span>${many ? `<small>${PG.list.indexOf(pg) + 1}/${PG.list.length}</small>` : ''}<i>▾</i></button>` +
+    nav(1, '›', 'a_pageNext') +
+    `<button type="button" class="pg-add" data-pgadd title="${esc(t('a_newPage'))}">＋</button>`;
+  if (pgOpen) pagePanel(true);
+}
+function pageLoad(pg) {
+  PG.active = pg.id;
+  M.nodes = pg.nodes;
+  M.links = pg.links;
+  if (pg.view) M.view = pg.view;
+  else {
+    const s = SR();
+    M.view = pg.view = { x: s.width / 2, y: s.height / 2, z: 1 };
+  }
+  undoS = pg.u || [];
+  redoS = pg.r || [];
+  pg.u = pg.r = null;
+  sel = { n: new Set(), l: null };
+  lk = '';
+  linkFrom = null;
+  tool = 'select';
+  searchClear();
+  if (M.settings.layout === 'tidy') layoutAll();
+  hint();
+  render();
+  buildPanel();
+  pagesRender();
+}
+function pageGo(id) {
+  if (!cur || id === PG.active) return;
+  pagePanel(false);
+  const to = pageById(id);
+  if (!to) return;
+  if (editing) commitEdit();
+  if (editingLink) commitEditLink();
+  pagesSync();
+  const from = pageById(PG.active);
+  from.u = undoS;
+  from.r = redoS;
+  pageLoad(to);
+  viewDirty();
+}
+function pageStep(d) {
+  if (!need() || PG.list.length < 2) return;
+  const i = PG.list.findIndex((p) => p.id === PG.active);
+  pageGo(PG.list[(i + d + PG.list.length) % PG.list.length].id);
+}
+const pageName = (base) => {
+  let n = String(base).slice(0, 60),
+    i = 2;
+  const names = new Set(PG.list.map((p) => p.name));
+  while (names.has(n)) n = String(base).slice(0, 55) + ' ' + i++;
+  return n;
+};
+const PG_MAX = 100;
+async function pageAdd() {
+  if (!need()) return;
+  if (PG.list.length >= PG_MAX) return toast(t('pg_max'), 'err');
+  const n = await ask(t('pg_newTitle'), t('pg_name'), pageName(t('pg_default', PG.list.length + 1)));
+  if (n == null) return;
+  const root = rootNode();
+  root.isTitle = false; /* only the first page's title block follows the project name */
+  const pg = { id: uid(), name: pageName(n), nodes: [root], links: [], view: null };
+  PG.list.push(pg);
+  pageGo(pg.id);
+  markDirty();
+}
+async function pageRename(id) {
+  const pg = pageById(id);
+  if (!pg) return;
+  const n = await ask(t('pg_renTitle'), t('pg_name'), pg.name);
+  if (n == null || n === pg.name) return;
+  pg.name = pageName(n);
+  pagesRender();
+  viewDirty();
+}
+function pageDup(id) {
+  if (PG.list.length >= PG_MAX) return toast(t('pg_max'), 'err');
+  pagesSync();
+  const src = pageById(id);
+  if (!src) return;
+  const map = new Map(),
+    nodes = JSON.parse(JSON.stringify(src.nodes)).map((n) => {
+      const nid = uid();
+      map.set(n.id, nid);
+      return { ...n, id: nid, isTitle: false };
+    }),
+    links = JSON.parse(JSON.stringify(src.links)).map((l) => ({
+      ...l,
+      id: uid(),
+      from: map.get(l.from) || l.from,
+      to: map.get(l.to) || l.to,
+    })),
+    pg = {
+      id: uid(),
+      name: pageName(t('pg_copy', src.name)),
+      nodes,
+      links,
+      view: src.view ? { ...src.view } : null,
+    };
+  PG.list.splice(PG.list.indexOf(src) + 1, 0, pg);
+  pageGo(pg.id);
+  markDirty();
+}
+async function pageDel(id) {
+  const pg = pageById(id);
+  if (!pg) return;
+  if (PG.list.length < 2) return toast(t('pg_last'), 'err');
+  if (!(await confirmDlg(t('pg_delTitle'), t('pg_delMsg', pg.name), t('b_delete')))) return;
+  if (editing) cancelEdit();
+  if (editingLink) cancelEdit();
+  const i = PG.list.indexOf(pg);
+  if (id === PG.active) {
+    PG.list.splice(i, 1);
+    pageLoad(PG.list[Math.min(i, PG.list.length - 1)]);
+  } else {
+    pagesSync();
+    PG.list.splice(i, 1);
+    pagesRender();
+  }
+  markDirty();
+}
+/* ----- page panel: opens above the pill; pick a page, rename / duplicate / delete, drag to reorder ----- */
+let pgOpen = false;
+function pagePanel(on) {
+  pgOpen = !!on && !!cur;
+  const p = $('#pgpanel');
+  p.hidden = !pgOpen;
+  if (!pgOpen) return;
+  p.innerHTML =
+    `<div class="pg-list" role="listbox">` +
+    PG.list
+      .map(
+        (g) =>
+          `<div class="pg-row${g.id === PG.active ? ' on' : ''}" role="option" aria-selected="${g.id === PG.active}" data-pg="${esc(g.id)}" draggable="true" title="${esc(t('pg_drag'))}"><span class="pg-ck">${g.id === PG.active ? '✓' : ''}</span><span class="pg-n">${esc(g.name)}</span><span class="pg-ico"><button type="button" data-pgact="ren" title="${esc(t('pg_ren'))}">✎</button><button type="button" data-pgact="dup" title="${esc(t('pg_dup'))}">⧉</button>${PG.list.length > 1 ? `<button type="button" data-pgact="del" title="${esc(t('pg_del'))}">✕</button>` : ''}</span></div>`,
+      )
+      .join('') +
+    `</div><button type="button" class="pg-new" data-pgact="new">＋ ${esc(t('a_newPage'))}</button>`;
+  const on1 = p.querySelector('.pg-row.on');
+  if (on1) on1.scrollIntoView({ block: 'nearest' });
+}
+function pageReorder(id, to) {
+  const i = PG.list.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  const [pg] = PG.list.splice(i, 1);
+  PG.list.splice(Math.max(0, Math.min(to, PG.list.length)), 0, pg);
+  pagesRender();
+  viewDirty();
+}
+/* ==========================================================
  * HISTORY & SAVING
  * ========================================================== */
 const core = () => JSON.stringify({ nodes: M.nodes, links: M.links });
@@ -1634,13 +1867,20 @@ function viewDirty() {
   clearTimeout(saveT);
   saveT = setTimeout(() => save(true), 1500);
 }
-const proj = () => ({
-  version: 1,
-  nodes: M.nodes,
-  links: M.links,
-  settings: M.settings,
-  view: M.view,
-});
+const proj = () => {
+  pagesSync();
+  const o = { version: 1, nodes: M.nodes, links: M.links, settings: M.settings, view: M.view };
+  if (PG.list.length) {
+    /* the active page is the top-level nodes/links/view, so its entry carries only id + name */
+    o.pages = PG.list.map((p) =>
+      p.id === PG.active
+        ? { id: p.id, name: p.name }
+        : { id: p.id, name: p.name, nodes: p.nodes, links: p.links, view: p.view || undefined },
+    );
+    o.activePage = PG.active;
+  }
+  return o;
+};
 async function api(m, u, b) {
   const r = await fetch('/api' + u, {
     method: m,
@@ -1708,6 +1948,8 @@ const fmtD = (s) => (s ? new Date(s).toLocaleString('en-GB') : '');
 function resetCur() {
   cur = null;
   M = blank();
+  PG = { list: [], active: '' };
+  pagesRender();
   searchClear();
   undoS = [];
   redoS = [];
@@ -1734,6 +1976,7 @@ async function openProject(id) {
       modified: r.metadata.modified,
     };
     M = norm(r.project);
+    pagesLoad(r.project);
     searchClear();
     if (M.settings.layout === 'tidy') layoutAll();
     if (!r.project.view) {
@@ -1753,6 +1996,7 @@ async function openProject(id) {
     hint();
     render();
     buildPanel();
+    pagesRender();
   } catch (e) {
     err(e, 't_loadErr');
   }
@@ -1778,6 +2022,7 @@ async function newProject() {
   }
 }
 async function syncName(txt) {
+  if (PG.list[0] && PG.active !== PG.list[0].id) return; /* only the first page names the project */
   const v = String(txt || '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -3159,32 +3404,6 @@ function pdfBlob(jpg, pxW, pxH, pw, ph) {
   add(xt + `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF`);
   return new Blob(parts, { type: 'application/pdf' });
 }
-function exportPdf() {
-  if (!need()) return;
-  if (!M.nodes.length) return toast(t('t_empty'), 'err');
-  const b = bbox(),
-    W = b.w + 80,
-    H = b.h + 80,
-    k = Math.min(2, 8000 / Math.max(W, H)),
-    img = new Image();
-  img.onload = () => {
-    const c = document.createElement('canvas');
-    c.width = Math.round(W * k);
-    c.height = Math.round(H * k);
-    const g = c.getContext('2d');
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, c.width, c.height);
-    g.drawImage(img, 0, 0, c.width, c.height);
-    const jpg = Uint8Array.from(atob(c.toDataURL('image/jpeg', 0.95).split(',')[1]), (ch) =>
-        ch.charCodeAt(0),
-      ),
-      f = Math.min(0.75, 14400 / Math.max(W, H));
-    dl(fname('pdf'), pdfBlob(jpg, c.width, c.height, W * f, H * f));
-    toast(t('t_exported'));
-  };
-  img.onerror = () => toast(t('e_error'), 'err');
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr());
-}
 function downloadJson(name, project) {
   const file =
     (String(name)
@@ -3209,45 +3428,536 @@ function exportJson() {
   downloadJson(cur.name, proj());
   toast(t('t_exported'));
 }
-function exportSvg() {
-  if (!need()) return;
-  if (!M.nodes.length) return toast(t('t_empty'), 'err');
-  dl(fname('svg'), new Blob([svgStr()], { type: 'image/svg+xml' }));
-  toast(t('t_exported'));
+/* ----- multi export (SVG / PNG / PDF): one file per page, named after the page's first block ----- */
+const BADFN = /[<>:"/\\|?*\x00-\x1f]/g;
+function withPage(pg, fn) {
+  const sn = M.nodes,
+    sl = M.links;
+  M.nodes = pg.nodes;
+  M.links = pg.links;
+  try {
+    calcHidden();
+    return fn();
+  } finally {
+    M.nodes = sn;
+    M.links = sl;
+    calcHidden();
+  }
 }
-function exportPng() {
+function pageFileName(pg, used, ext) {
+  const first = pg.nodes.find((n) => n.isTitle) || pg.nodes[0],
+    base =
+      String((first && first.text) || '')
+        .replace(BADFN, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80)
+        .replace(/[. ]+$/, '') ||
+      pg.name.replace(BADFN, '_') ||
+      'mindly';
+  let n = base,
+    i = 2;
+  while (used.has(n.toLowerCase())) n = base + ' ' + i++;
+  used.add(n.toLowerCase());
+  return n + '.' + ext;
+}
+const svgImage = (svg) =>
+  new Promise((ok, ko) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = ko;
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+async function exportPages(ext, make) {
   if (!need()) return;
-  if (!M.nodes.length) return toast(t('t_empty'), 'err');
-  const b = bbox(),
-    W = b.w + 80,
-    H = b.h + 80,
-    img = new Image();
-  img.onload = () => {
-    const c = document.createElement('canvas');
-    c.width = W * 2;
-    c.height = H * 2;
+  pagesSync();
+  const items = [];
+  for (const pg of PG.list) {
+    const r = withPage(pg, () => {
+      const b = bbox();
+      return b ? { pg, svg: svgStr(), W: b.w + 80, H: b.h + 80 } : null;
+    });
+    if (r) items.push(r);
+  }
+  if (!items.length) return toast(t('t_empty'), 'err');
+  const used = new Set();
+  try {
+    for (let i = 0; i < items.length; i++) {
+      const blob = await make(items[i]);
+      dl(pageFileName(items[i].pg, used, ext), blob);
+      if (i < items.length - 1) await new Promise((r) => setTimeout(r, 350));
+    }
+    toast(t('t_exported'));
+  } catch (e) {
+    toast(t('e_error'), 'err');
+  }
+}
+const exportSvg = () => exportPages('svg', async (r) => new Blob([r.svg], { type: 'image/svg+xml' }));
+const exportPng = () =>
+  exportPages('png', async (r) => {
+    const img = await svgImage(r.svg),
+      c = document.createElement('canvas');
+    c.width = r.W * 2;
+    c.height = r.H * 2;
     const x = c.getContext('2d');
     x.scale(2, 2);
-    x.drawImage(img, 0, 0, W, H);
-    c.toBlob((bl) => {
-      dl(fname('png'), bl);
-      toast(t('t_exported'));
-    });
+    x.drawImage(img, 0, 0, r.W, r.H);
+    return new Promise((ok) => c.toBlob(ok));
+  });
+const exportPdf = () =>
+  exportPages('pdf', async (r) => {
+    const img = await svgImage(r.svg),
+      k = Math.min(2, 8000 / Math.max(r.W, r.H)),
+      c = document.createElement('canvas');
+    c.width = Math.round(r.W * k);
+    c.height = Math.round(r.H * k);
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
+    const jpg = Uint8Array.from(atob(c.toDataURL('image/jpeg', 0.95).split(',')[1]), (ch) =>
+        ch.charCodeAt(0),
+      ),
+      f = Math.min(0.75, 14400 / Math.max(r.W, r.H));
+    return pdfBlob(jpg, c.width, c.height, r.W * f, r.H * f);
+  });
+/* ----- other map formats: XMind, FreeMind, OPML, Markdown (import + export) -----
+ * Every format is converted to / from a simple tree { text, kids: [...], side } per page. */
+const CRC_T = (() => {
+  const a = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    a[n] = c >>> 0;
+  }
+  return a;
+})();
+function crc32(u) {
+  let c = 0xffffffff;
+  for (let i = 0; i < u.length; i++) c = CRC_T[(c ^ u[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+/* minimal ZIP writer (no compression, UTF-8 names): enough for .xmind */
+function zipStore(files, mime) {
+  const enc = new TextEncoder(),
+    parts = [],
+    cen = [],
+    d = new Date(),
+    dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+    tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  let off = 0;
+  for (const f of files) {
+    const nm = enc.encode(f.name),
+      data = typeof f.data === 'string' ? enc.encode(f.data) : f.data,
+      crc = crc32(data),
+      sz = data.length,
+      h = new DataView(new ArrayBuffer(30)),
+      c = new DataView(new ArrayBuffer(46));
+    h.setUint32(0, 0x04034b50, true);
+    h.setUint16(4, 20, true);
+    h.setUint16(6, 0x0800, true);
+    h.setUint16(10, tm, true);
+    h.setUint16(12, dd, true);
+    h.setUint32(14, crc, true);
+    h.setUint32(18, sz, true);
+    h.setUint32(22, sz, true);
+    h.setUint16(26, nm.length, true);
+    parts.push(new Uint8Array(h.buffer), nm, data);
+    c.setUint32(0, 0x02014b50, true);
+    c.setUint16(4, 20, true);
+    c.setUint16(6, 20, true);
+    c.setUint16(8, 0x0800, true);
+    c.setUint16(12, tm, true);
+    c.setUint16(14, dd, true);
+    c.setUint32(16, crc, true);
+    c.setUint32(20, sz, true);
+    c.setUint32(24, sz, true);
+    c.setUint16(28, nm.length, true);
+    c.setUint32(42, off, true);
+    cen.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + sz;
+  }
+  let cl = 0;
+  for (const p of cen) cl += p.length;
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true);
+  e.setUint16(8, files.length, true);
+  e.setUint16(10, files.length, true);
+  e.setUint32(12, cl, true);
+  e.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, new Uint8Array(e.buffer)], { type: mime });
+}
+/* minimal ZIP reader: returns only the XMind content files (stored or deflated) */
+async function zipRead(buf) {
+  const u = new Uint8Array(buf),
+    dv = new DataView(buf),
+    dec = new TextDecoder(),
+    out = {};
+  let e = -1;
+  for (let i = u.length - 22; i >= Math.max(0, u.length - 22 - 65536); i--)
+    if (dv.getUint32(i, true) === 0x06054b50) {
+      e = i;
+      break;
+    }
+  if (e < 0) throw 0;
+  const n = dv.getUint16(e + 10, true);
+  let p = dv.getUint32(e + 16, true);
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw 0;
+    const meth = dv.getUint16(p + 10, true),
+      csz = dv.getUint32(p + 20, true),
+      nl = dv.getUint16(p + 28, true),
+      xl = dv.getUint16(p + 30, true),
+      cl = dv.getUint16(p + 32, true),
+      lo = dv.getUint32(p + 42, true),
+      name = dec.decode(u.subarray(p + 46, p + 46 + nl));
+    p += 46 + nl + xl + cl;
+    if (name !== 'content.json' && name !== 'content.xml') continue;
+    const ds = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true),
+      raw = u.subarray(ds, ds + csz);
+    if (meth === 0) out[name] = raw;
+    else if (meth === 8) {
+      if (typeof DecompressionStream === 'undefined') throw 0;
+      const s = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      out[name] = new Uint8Array(await new Response(s).arrayBuffer());
+    } else throw 0;
+  }
+  return out;
+}
+/* ----- model <-> tree ----- */
+function pageTree(pg) {
+  const byid = new Map(pg.nodes.map((n) => [n.id, n])),
+    kidsOf = new Map(),
+    hasIn = new Set();
+  for (const l of pg.links)
+    if (byid.has(l.from) && byid.has(l.to) && l.from !== l.to) {
+      hasIn.add(l.to);
+      if (!kidsOf.has(l.from)) kidsOf.set(l.from, []);
+      if (!kidsOf.get(l.from).includes(l.to)) kidsOf.get(l.from).push(l.to);
+    }
+  let roots = pg.nodes.filter((n) => !hasIn.has(n.id));
+  if (!pg.nodes.length) return null;
+  if (!roots.length) roots = [pg.nodes[0]];
+  const main = roots.find((n) => n.isTitle) || roots[0],
+    seen = new Set(),
+    cy = (n) => n.y + n.h / 2,
+    build = (n) => {
+      seen.add(n.id);
+      const o = { text: String(n.text || ''), kids: [] },
+        ks = (kidsOf.get(n.id) || []).map((id) => byid.get(id)).sort((a, b) => cy(a) - cy(b));
+      for (const c of ks)
+        if (!seen.has(c.id)) {
+          const k = build(c);
+          if (n === main) k.side = c.side || (c.x + c.w / 2 < main.x + main.w / 2 ? 'l' : 'r');
+          o.kids.push(k);
+        }
+      return o;
+    },
+    tree = build(main);
+  for (const r of roots) if (r !== main && !seen.has(r.id)) tree.kids.push(build(r));
+  return tree;
+}
+function docTree() {
+  pagesSync();
+  const a = PG.list.map((pg) => pageTree(pg)).filter(Boolean);
+  if (!a.length) return null;
+  return a.length === 1 ? a[0] : { text: cur.name, kids: a };
+}
+function buildPage(tree, first) {
+  const nodes = [],
+    links = [];
+  let yy = 0;
+  const clip = (s) => String(s == null ? '' : s).replace(/\r/g, '').trim().slice(0, 500),
+    add = (tr, parent, side) => {
+      if (nodes.length >= 20000) throw 0;
+      const n = parent
+        ? mk({ text: clip(tr.text), y: yy++, side })
+        : mk({ ...titleOpts(), text: clip(tr.text), isTitle: first, y: yy++ });
+      fitNode(n);
+      nodes.push(n);
+      if (parent) links.push(mkl({ from: parent.id, to: n.id }));
+      return n;
+    },
+    walk = (tr, n, root) => {
+      const ks = tr.kids || [],
+        half = Math.ceil(ks.length / 2);
+      ks.forEach((k, i) => {
+        const side = root ? (k.side === 'l' || k.side === 'r' ? k.side : i < half ? 'r' : 'l') : undefined;
+        walk(k, add(k, n, side), false);
+      });
+    };
+  walk(tree, add(tree, null), true);
+  return { nodes, links };
+}
+function treesToProject(pages) {
+  const list = pages.slice(0, PG_MAX).map((p, i) => ({
+      id: uid(),
+      name: String(p.name || '').trim().slice(0, 60) || t('pg_default', i + 1),
+      ...buildPage(p.tree, i === 0),
+    })),
+    f = list[0];
+  return {
+    version: 1,
+    nodes: f.nodes,
+    links: f.links,
+    settings: { grid: true, snap: false, layout: 'tidy' },
+    pages: list.map((p, i) =>
+      i === 0 ? { id: p.id, name: p.name } : { id: p.id, name: p.name, nodes: p.nodes, links: p.links },
+    ),
+    activePage: f.id,
   };
-  img.onerror = () => toast(t('e_error'), 'err');
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr());
+}
+/* ----- writers ----- */
+const xe = (s) =>
+  String(s)
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '&#10;');
+const xid = () => uid() + uid() + uid();
+const XML_H = '<?xml version="1.0" encoding="UTF-8"?>\n';
+function xmindBlob() {
+  pagesSync();
+  const pgs = PG.list.map((pg) => ({ name: pg.name, tree: pageTree(pg) })).filter((p) => p.tree);
+  if (!pgs.length) return null;
+  const tj = (tr) => {
+      const o = { id: xid(), class: 'topic', title: tr.text };
+      if (tr.kids.length) o.children = { attached: tr.kids.map(tj) };
+      return o;
+    },
+    tx = (tr) =>
+      `<topic id="${xid()}"><title>${xe(tr.text)}</title>` +
+      (tr.kids.length ? `<children><topics type="attached">${tr.kids.map(tx).join('')}</topics></children>` : '') +
+      '</topic>',
+    json = JSON.stringify(
+      pgs.map((p) => ({ id: xid(), class: 'sheet', title: p.name, rootTopic: tj(p.tree) })),
+      null,
+      1,
+    ),
+    xml =
+      XML_H.replace('?>', ' standalone="no"?>') +
+      '<xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0" version="2.0">' +
+      pgs.map((p) => `<sheet id="${xid()}">${tx(p.tree)}<title>${xe(p.name)}</title></sheet>`).join('') +
+      '</xmap-content>';
+  return zipStore(
+    [
+      { name: 'content.json', data: json },
+      { name: 'metadata.json', data: JSON.stringify({ creator: { name: 'Mindly', version: '5' } }) },
+      { name: 'manifest.json', data: JSON.stringify({ 'file-entries': { 'content.json': {}, 'metadata.json': {} } }) },
+      { name: 'content.xml', data: xml },
+      {
+        name: 'META-INF/manifest.xml',
+        data:
+          XML_H.replace('?>', ' standalone="no"?>') +
+          '<manifest xmlns="urn:xmind:xmap:xmlns:manifest:1.0" password-hint=""><file-entry full-path="content.xml" media-type="text/xml"/><file-entry full-path="META-INF/manifest.xml" media-type="text/xml"/></manifest>',
+      },
+    ],
+    'application/vnd.xmind.workbook',
+  );
+}
+function freemindBlob() {
+  const tr = docTree();
+  if (!tr) return null;
+  const nd = (n, top) =>
+    `<node ID="ID_${xid()}" TEXT="${xe(n.text)}"${top && n.side === 'l' ? ' POSITION="left"' : top ? ' POSITION="right"' : ''}>${n.kids.map((k) => nd(k, false)).join('')}</node>`;
+  return new Blob(
+    [`<map version="1.0.1">${`<node ID="ID_${xid()}" TEXT="${xe(tr.text)}">${tr.kids.map((k) => nd(k, true)).join('')}</node>`}</map>`],
+    { type: 'application/x-freemind' },
+  );
+}
+function opmlBlob() {
+  const tr = docTree();
+  if (!tr) return null;
+  const ol = (n) => `<outline text="${xe(n.text)}">${n.kids.map(ol).join('')}</outline>`;
+  return new Blob(
+    [XML_H + `<opml version="2.0"><head><title>${xe(cur.name)}</title></head><body>${ol(tr)}</body></opml>\n`],
+    { type: 'text/x-opml' },
+  );
+}
+function mdBlob() {
+  pagesSync();
+  const pgs = PG.list.map((pg) => pageTree(pg)).filter(Boolean);
+  if (!pgs.length) return null;
+  const one = (s) => String(s).replace(/\s*\n\s*/g, ' ').trim(),
+    bl = (n, d, out) => {
+      out.push('  '.repeat(d) + '- ' + one(n.text));
+      n.kids.forEach((k) => bl(k, d + 1, out));
+    },
+    out = [];
+  if (pgs.length > 1) out.push('# ' + one(cur.name), '');
+  for (const p of pgs) {
+    out.push((pgs.length > 1 ? '## ' : '# ') + one(p.text));
+    p.kids.forEach((k) => bl(k, 0, out));
+    out.push('');
+  }
+  return new Blob([out.join('\n')], { type: 'text/markdown' });
+}
+const exportOther = (ext, make) => () => {
+  if (!need()) return;
+  const b = make();
+  if (!b) return toast(t('t_empty'), 'err');
+  dl(fname(ext), b);
+  toast(t('t_exported'));
+};
+const exportXmind = exportOther('xmind', xmindBlob),
+  exportFreemind = exportOther('mm', freemindBlob),
+  exportOpml = exportOther('opml', opmlBlob),
+  exportMd = exportOther('md', mdBlob);
+/* ----- readers ----- */
+function xmlDoc(txt) {
+  const d = new DOMParser().parseFromString(txt, 'application/xml');
+  if (d.getElementsByTagName('parsererror').length) throw 0;
+  return d;
+}
+const xkids = (el, name) => [...el.children].filter((c) => c.localName === name);
+function fromXmindJson(arr) {
+  const topic = (o) => {
+    const ch = o.children || {},
+      ks = [...(ch.attached || []), ...(ch.detached || [])];
+    return { text: o.title == null ? '' : String(o.title), kids: ks.map(topic) };
+  };
+  const sheets = (Array.isArray(arr) ? arr : [arr]).filter((s) => s && s.rootTopic);
+  if (!sheets.length) throw 0;
+  return sheets.map((s) => ({ name: s.title, tree: topic(s.rootTopic) }));
+}
+function fromXmindXml(txt) {
+  const topic = (el) => {
+      const ti = xkids(el, 'title')[0],
+        ch = xkids(el, 'children')[0],
+        ks = [];
+      if (ch) for (const ts of xkids(ch, 'topics')) for (const k of xkids(ts, 'topic')) ks.push(topic(k));
+      return { text: ti ? ti.textContent : '', kids: ks };
+    },
+    sheets = [...xmlDoc(txt).getElementsByTagName('sheet')].filter((s) => xkids(s, 'topic')[0]);
+  if (!sheets.length) throw 0;
+  return sheets.map((s) => {
+    const ti = xkids(s, 'title')[0];
+    return { name: ti ? ti.textContent : '', tree: topic(xkids(s, 'topic')[0]) };
+  });
+}
+function fromFreemind(doc) {
+  const node = (el, top) => {
+    const rc = xkids(el, 'richcontent').find((r) => r.getAttribute('TYPE') !== 'NOTE' && r.getAttribute('TYPE') !== 'DETAILS'),
+      o = {
+        text: el.hasAttribute('TEXT') ? el.getAttribute('TEXT') : rc ? rc.textContent.replace(/\s+/g, ' ').trim() : '',
+        kids: xkids(el, 'node').map((k) => node(k, false)),
+      };
+    if (top) {
+      const p = (el.getAttribute('POSITION') || '').toLowerCase();
+      if (p === 'left') o.side = 'l';
+      else if (p === 'right') o.side = 'r';
+    }
+    return o;
+  };
+  const root = xkids(doc.documentElement, 'node')[0];
+  if (!root) throw 0;
+  const tr = node(root, false);
+  tr.kids = xkids(root, 'node').map((k) => node(k, true));
+  return [{ name: '', tree: tr }];
+}
+function fromOpml(doc, fallback) {
+  const body = doc.getElementsByTagName('body')[0],
+    ol = (el) => ({ text: el.getAttribute('text') || el.getAttribute('title') || '', kids: xkids(el, 'outline').map(ol) });
+  if (!body) throw 0;
+  const tops = xkids(body, 'outline').map(ol);
+  if (!tops.length) throw 0;
+  if (tops.length === 1) return [{ name: '', tree: tops[0] }];
+  const ti = doc.getElementsByTagName('title')[0];
+  return [{ name: '', tree: { text: (ti && ti.textContent.trim()) || fallback, kids: tops } }];
+}
+function fromOutline(txt, fallback) {
+  const items = [],
+    clean = (s) =>
+      s
+        .replace(/^\[[ xX]\]\s+/, '')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/__(.+?)__/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        .trim();
+  let hd = 0,
+    ls = [],
+    fence = false;
+  for (const raw of txt.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(raw)) {
+      fence = !fence;
+      continue;
+    }
+    if (fence || !raw.trim() || /^\s*(---+|\*\*\*+|___+)\s*$/.test(raw)) continue;
+    const h = raw.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (h) {
+      hd = h[1].length;
+      ls = [];
+      items.push({ d: hd, s: clean(h[2]) });
+      continue;
+    }
+    const m = raw.match(/^([ \t]*)(?:[-*+•]|\d+[.)])\s+(.*)$/),
+      ind = (m ? m[1] : raw.match(/^[ \t]*/)[0]).replace(/\t/g, '    ').length,
+      s = clean(m ? m[2] : raw.trim());
+    while (ls.length && ls[ls.length - 1] > ind) ls.pop();
+    if (!ls.length || ls[ls.length - 1] < ind) ls.push(ind);
+    items.push({ d: hd + ls.length, s });
+  }
+  if (!items.length) throw 0;
+  const mkn = (s) => ({ text: s, kids: [] }),
+    tops = [],
+    stack = [];
+  for (const it of items) {
+    const n = mkn(it.s);
+    while (stack.length && stack[stack.length - 1].d >= it.d) stack.pop();
+    if (stack.length) stack[stack.length - 1].n.kids.push(n);
+    else tops.push(n);
+    stack.push({ d: it.d, n });
+  }
+  return [{ name: '', tree: tops.length === 1 ? tops[0] : { text: fallback, kids: tops } }];
+}
+async function readMap(f) {
+  const ext = (f.name.match(/\.([^.]+)$/) || [, ''])[1].toLowerCase(),
+    base = f.name.replace(/\.[^.]+$/, '') || t('untitled');
+  if (ext === 'xmind') {
+    const z = await zipRead(await f.arrayBuffer()),
+      dec = new TextDecoder();
+    return z['content.json']
+      ? fromXmindJson(JSON.parse(dec.decode(z['content.json'])))
+      : fromXmindXml(dec.decode(z['content.xml'] || (() => { throw 0; })()));
+  }
+  const txt = await f.text();
+  if (ext === 'md' || ext === 'markdown' || ext === 'txt') return fromOutline(txt, base);
+  const doc = xmlDoc(txt),
+    root = doc.documentElement.localName;
+  if (root === 'map') return fromFreemind(doc);
+  if (root === 'opml') return fromOpml(doc, base);
+  if (root === 'xmap-content') return fromXmindXml(txt);
+  throw 0;
+}
+async function importOther(f) {
+  const pages = await readMap(f),
+    base = f.name.replace(/\.[^.]+$/, '') || t('untitled'),
+    safe = (s) => String(s || '').replace(BADFN, ' ').replace(/\s+/g, ' ').trim().slice(0, 60),
+    p = treesToProject(pages);
+  let name = safe(pages[0].tree.text) || safe(base) || t('untitled'),
+    r;
+  try {
+    r = await api('POST', '/projects', { name, project: p });
+  } catch (e) {
+    r = await api('POST', '/projects', { name: t('untitled'), project: p });
+  }
+  await openProject(r.id);
 }
 $('#file').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
   try {
-    const j = JSON.parse(await f.text()),
-      p = j.project || j;
-    if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
-    const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
-    const r = await api('POST', '/projects', { name, project: p });
-    await openProject(r.id);
+    if (/\.json$/i.test(f.name)) {
+      const j = JSON.parse(await f.text()),
+        p = j.project || j;
+      if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
+      const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
+      const r = await api('POST', '/projects', { name, project: p });
+      await openProject(r.id);
+    } else await importOther(f);
     toast(t('t_imported'));
   } catch (x) {
     toast(t('t_importErr'), 'err');
@@ -3289,6 +3999,9 @@ async function showPath() {
 }
 const ACT = {
   new: newProject,
+  newPage: pageAdd,
+  pagePrev: () => pageStep(-1),
+  pageNext: () => pageStep(1),
   find: () => {
     if (!need()) return;
     searchOpen(true);
@@ -3305,6 +4018,10 @@ const ACT = {
   exportSvg,
   exportPng,
   exportPdf,
+  exportXmind,
+  exportFreemind,
+  exportOpml,
+  exportMd,
   preview,
   undo,
   redo,
@@ -3418,7 +4135,7 @@ document.addEventListener('click', (e) => {
           : a === 'export'
             ? {
                 l: t('a_export'),
-                sub: ['exportPdf', 'exportPng', 'exportSvg', 'exportJson'].map((x) => ({
+                sub: ['exportPdf', 'exportPng', 'exportSvg', 'exportJson', 'exportXmind', 'exportFreemind', 'exportOpml', 'exportMd'].map((x) => ({
                   l: t('a_' + x),
                   sc: shortcutOf(x),
                   f: ACT[x],
@@ -4022,6 +4739,90 @@ addEventListener('keyup', (e) => {
 /* ==========================================================
  * INIT
  * ========================================================== */
+$('#pagebar').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.pgadd !== undefined) {
+    pagePanel(false);
+    pageAdd();
+  } else if (b.dataset.pgstep) pageStep(+b.dataset.pgstep);
+  else if (b.dataset.pgmenu !== undefined) pagePanel(!pgOpen);
+});
+$('#pgpanel').addEventListener('click', (e) => {
+  const act = e.target.closest('[data-pgact]'),
+    row = e.target.closest('[data-pg]');
+  if (act) {
+    const k = act.dataset.pgact,
+      id = row && row.dataset.pg;
+    pagePanel(false);
+    if (k === 'new') pageAdd();
+    else if (k === 'ren') pageRename(id);
+    else if (k === 'dup') pageDup(id);
+    else if (k === 'del') pageDel(id);
+  } else if (row) {
+    if (row.dataset.pg === PG.active) pagePanel(false);
+    else pageGo(row.dataset.pg);
+  }
+});
+/* drag a row to reorder the pages */
+let pgDrag = '';
+$('#pgpanel').addEventListener('dragstart', (e) => {
+  const r = e.target.closest('[data-pg]');
+  if (!r) return;
+  pgDrag = r.dataset.pg;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', pgDrag);
+});
+$('#pgpanel').addEventListener('dragover', (e) => {
+  const r = e.target.closest('[data-pg]');
+  if (!pgDrag || !r) return;
+  e.preventDefault();
+  document.querySelectorAll('#pgpanel .over').forEach((x) => x.classList.remove('over'));
+  if (r.dataset.pg !== pgDrag) r.classList.add('over');
+});
+$('#pgpanel').addEventListener('drop', (e) => {
+  const r = e.target.closest('[data-pg]');
+  if (!pgDrag || !r) return;
+  e.preventDefault();
+  const id = pgDrag;
+  pgDrag = '';
+  pageReorder(id, PG.list.findIndex((p) => p.id === r.dataset.pg));
+});
+$('#pgpanel').addEventListener('dragend', () => {
+  pgDrag = '';
+  document.querySelectorAll('#pgpanel .over').forEach((x) => x.classList.remove('over'));
+});
+/* right-click a page in the list to rename it */
+$('#pgpanel').addEventListener('contextmenu', (e) => {
+  const r = e.target.closest('[data-pg]');
+  if (!r) return;
+  e.preventDefault();
+  const id = r.dataset.pg;
+  pagePanel(false);
+  pageRename(id);
+});
+/* project header: Info (?) button, same menu as the home */
+$('#btnHelp').addEventListener('click', () => {
+  const m = $('#pmenu');
+  m.hidden = !m.hidden;
+});
+$('#pmenu').addEventListener('click', (e) => {
+  const mi = e.target.closest('[data-hm-act]');
+  $('#pmenu').hidden = true;
+  if (mi) ACT[mi.dataset.hmAct]();
+});
+addEventListener('pointerdown', (e) => {
+  if (!$('#pmenu').hidden && !e.target.closest('#pmenu, #btnHelp')) $('#pmenu').hidden = true;
+});
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#pmenu').hidden) $('#pmenu').hidden = true;
+});
+addEventListener('pointerdown', (e) => {
+  if (pgOpen && !e.target.closest('#pgpanel, #pagebar')) pagePanel(false);
+});
+addEventListener('keydown', (e) => {
+  if (pgOpen && e.key === 'Escape') pagePanel(false);
+});
 $('#nsq').addEventListener('input', (e) => searchInput(e.target.value));
 $('#nsq').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {

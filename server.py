@@ -11,6 +11,7 @@ SITE = os.path.join(BASE, 'static')
 PROJ = os.path.join(BASE, 'projects')
 HOST, PORT = '127.0.0.1', 8765
 MAXB = 25 * 1024 * 1024
+MAXPAGES = 100
 BAD = r'[<>:"/\\|?*\x00-\x1f]'
 RESERVED = re.compile(r'^(con|prn|aux|nul|com[0-9]|lpt[0-9])$', re.I)
 
@@ -81,6 +82,32 @@ def check(p):
            'settings': p['settings'] if isinstance(p.get('settings'), dict) else {}}
     if isinstance(p.get('view'), dict):
         out['view'] = p['view']
+    # Pages: the top-level nodes/links/view are the ACTIVE page; the other pages are listed here.
+    # The active page's entry carries only id + name (its data is the top-level one).
+    if 'pages' in p:
+        pages = p['pages']
+        if not isinstance(pages, list) or not 1 <= len(pages) <= MAXPAGES or not all(isinstance(x, dict) for x in pages):
+            raise Err(400, 'invalid_project')
+        nn, nl = len(p['nodes']), len(p['links'])
+        for x in pages:
+            for k in ('nodes', 'links'):
+                if k in x and (not isinstance(x[k], list) or not all(isinstance(i, dict) for i in x[k])):
+                    raise Err(400, 'invalid_project')
+            nn += len(x.get('nodes', []))
+            nl += len(x.get('links', []))
+        if nn > 20000 * 5 or nl > 50000 * 5:
+            raise Err(400, 'invalid_project')
+        clean_pages = []
+        for x in pages:
+            e = {'id': str(x.get('id', ''))[:64], 'name': str(x.get('name', ''))[:60]}
+            for k in ('nodes', 'links'):
+                if k in x:
+                    e[k] = x[k]
+            if isinstance(x.get('view'), dict):
+                e['view'] = x['view']
+            clean_pages.append(e)
+        out['pages'] = clean_pages
+        out['activePage'] = str(p.get('activePage', ''))[:64]
     return out
 
 
