@@ -6,9 +6,12 @@ from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, unquote, quote
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-SITE = os.path.join(BASE, 'static')
+BASE = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+SITE = os.path.join(getattr(sys, '_MEIPASS', BASE), 'static')
 PROJ = os.path.join(BASE, 'projects')
+# Preferences live in static/preferences.json (next to the app, so they travel with the folder).
+PREFS = os.path.join(BASE if getattr(sys, 'frozen', False) else SITE, 'preferences.json')
+MAXPREFS = 1024 * 1024
 HOST, PORT = '127.0.0.1', 8765
 MAXB = 25 * 1024 * 1024
 MAXPAGES = 100
@@ -198,6 +201,25 @@ def to_trash(path):
         raise Err(500, 'trash_failed')
 
 
+def prefs_route(m, body):
+    if m == 'GET':
+        try:
+            with open(PREFS, encoding='utf-8') as fh:
+                d = json.load(fh)
+            return 200, d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            return 200, {}
+    if m == 'PUT':
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in body.items()) or len(json.dumps(body)) > MAXPREFS:
+            raise Err(400, 'invalid_prefs')
+        tmp = PREFS + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump(body, fh, ensure_ascii=False, indent=1)
+        os.replace(tmp, PREFS)
+        return 200, {'ok': True}
+    raise Err(404, 'not_found')
+
+
 def route(m, parts, body):
     if not parts:
         if m == 'GET':
@@ -272,7 +294,7 @@ class H(SimpleHTTPRequestHandler):
             if self.headers.get('Host', '').split(':')[0] not in ('127.0.0.1', 'localhost'):
                 raise Err(403, 'forbidden')
             parts = [unquote(x) for x in urlparse(self.path).path.split('/') if x]
-            if len(parts) < 2 or parts[1] != 'projects':
+            if len(parts) < 2 or parts[1] not in ('projects', 'prefs'):
                 raise Err(404, 'not_found')
             body = {}
             if method in ('POST', 'PUT'):
@@ -285,7 +307,10 @@ class H(SimpleHTTPRequestHandler):
                     raise Err(400, 'bad_json')
                 if not isinstance(body, dict):
                     raise Err(400, 'bad_json')
-            code, obj = route(method, parts[2:], body)
+            if parts[1] == 'prefs':
+                code, obj = prefs_route(method, body)
+            else:
+                code, obj = route(method, parts[2:], body)
         except Err as e:
             code, obj = e.code, {'error': e.msg}
         except Exception:

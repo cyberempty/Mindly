@@ -22,6 +22,55 @@
  *
  * Companion files: index.html (markup), style.css (styles), ../server.py (local API).
  */
+/* ==========================================================
+ * PREFERENCES: stored in static/preferences.json (via the local server),
+ * not in the browser, so they follow the folder (USB stick, other PC).
+ * PS works like localStorage: PS.key = 'value', PS.key, PS.removeItem('key').
+ * ========================================================== */
+const PS = (() => {
+  let data = {};
+  let t = null;
+  try {
+    const x = new XMLHttpRequest(); /* synchronous: preferences are needed before the UI is built */
+    x.open('GET', '/api/prefs', false);
+    x.send();
+    if (x.status === 200) data = JSON.parse(x.responseText) || {};
+  } catch (e) {}
+  let migrated = false;
+  if (!Object.keys(data).length) {
+    /* one-time migration of the old browser preferences */
+    try {
+      ['mTheme', 'mRecent', 'mFav', 'mView', 'mPanel', 'mLast'].forEach((k) => {
+        const v = window.localStorage.getItem(k);
+        if (v != null) data[k] = v;
+      });
+      migrated = Object.keys(data).length > 0;
+    } catch (e) {}
+  }
+  const flush = () => {
+    clearTimeout(t);
+    t = null;
+    try {
+      fetch('/api/prefs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        keepalive: true,
+      });
+    } catch (e) {}
+  };
+  const later = () => {
+    clearTimeout(t);
+    t = setTimeout(flush, 300);
+  };
+  addEventListener('pagehide', () => t && flush());
+  if (migrated) later();
+  return new Proxy(data, {
+    get: (o, k) => (k === 'removeItem' ? (key) => (delete o[key], later()) : o[k]),
+    set: (o, k, v) => ((o[k] = String(v)), later(), true),
+  });
+})();
+
 'use strict';
 const $ = (s) => document.querySelector(s),
   uid = () => Math.random().toString(36).slice(2, 10),
@@ -294,7 +343,7 @@ ab_text|Mindly is a local mind map editor. All your data stays on your computer,
     const [a, b] = l.split('|');
     D[a] = b;
   });
-let theme = localStorage.mTheme || 'light';
+let theme = PS.mTheme || 'light';
 const t = (k, ...a) => {
   let s = D[k] || k;
   a.forEach((v, i) => (s = s.replace('{' + i + '}', () => v)));
@@ -1011,7 +1060,7 @@ function render() {
 const mm = $('#minimap'),
   mmsvg = $('#mmsvg');
 const MM_PAD = 6;
-localStorage.mMinimap = '0'; /* the minimap is always OFF at startup */
+PS.mMinimap = '0'; /* the minimap is always OFF at startup */
 let mmZoom = 1,
   mmFitScale = 1,
   mmOx = 0,
@@ -1022,10 +1071,10 @@ let mmZoom = 1,
   mmPanDrag = null,
   mmPinned = true;
 function mmVisible() {
-  return localStorage.mMinimap === '1';
+  return PS.mMinimap === '1';
 }
 function setMmVis(v) {
-  localStorage.mMinimap = v ? '1' : '0';
+  PS.mMinimap = v ? '1' : '0';
   mm.hidden = !v || !cur;
   if (v && cur) renderMinimap();
   refreshTB();
@@ -1938,12 +1987,12 @@ addEventListener('pagehide', () => {
  * ========================================================== */
 const recs = () => {
   try {
-    return JSON.parse(localStorage.mRecent || '[]');
+    return JSON.parse(PS.mRecent || '[]');
   } catch (e) {
     return [];
   }
 };
-const setRecs = (a) => (localStorage.mRecent = JSON.stringify(a.slice(0, 8)));
+const setRecs = (a) => (PS.mRecent = JSON.stringify(a.slice(0, 8)));
 const fmtD = (s) => (s ? new Date(s).toLocaleString('en-GB') : '');
 function resetCur() {
   cur = null;
@@ -1959,7 +2008,7 @@ function resetCur() {
   editing = null;
   editBase = null;
   $('#editor').hidden = true;
-  localStorage.removeItem('mLast');
+  PS.removeItem('mLast');
   setStat('none');
   updTitle();
   render();
@@ -1990,7 +2039,7 @@ async function openProject(id) {
     tool = 'select';
     linkFrom = null;
     setRecs([id, ...recs().filter((x) => x !== id)]);
-    localStorage.mLast = id;
+    PS.mLast = id;
     setStat('saved');
     updTitle();
     hint();
@@ -2036,7 +2085,7 @@ async function syncName(txt) {
       r = await api('POST', '/projects/' + encodeURIComponent(old) + '/rename', { name: v });
     cur.id = r.id;
     cur.name = r.metadata.name;
-    localStorage.mLast = r.id;
+    PS.mLast = r.id;
     setRecs(recs().map((x) => (x === old ? r.id : x)));
     setFavs(favs().map((x) => (x === old ? r.id : x)));
     updTitle();
@@ -2057,7 +2106,7 @@ async function renameProject(id, name) {
       cur.id = r.id;
       cur.name = r.metadata.name;
       updTitle();
-      localStorage.mLast = r.id;
+      PS.mLast = r.id;
     }
     setRecs(recs().map((x) => (x === id ? r.id : x)));
     setFavs(favs().map((x) => (x === id ? r.id : x)));
@@ -2244,13 +2293,13 @@ async function closeProject() {
  * ========================================================== */
 const favs = () => {
   try {
-    return JSON.parse(localStorage.mFav || '[]');
+    return JSON.parse(PS.mFav || '[]');
   } catch (e) {
     return [];
   }
 };
-const setFavs = (a) => (localStorage.mFav = JSON.stringify(a));
-const H = { q: '', f: 'all', view: localStorage.mView === 'list' ? 'list' : 'grid', list: [] };
+const setFavs = (a) => (PS.mFav = JSON.stringify(a));
+const H = { q: '', f: 'all', view: PS.mView === 'list' ? 'list' : 'grid', list: [] };
 const thumbCache = {};
 const thumbKey = (p) => p.id + '|' + p.modified;
 function thumbSVG(p) {
@@ -2448,7 +2497,7 @@ function homeClick(e) {
     else if (a === 'import') $('#file').click();
     else if (a === 'view') {
       H.view = H.view === 'grid' ? 'list' : 'grid';
-      localStorage.mView = H.view;
+      PS.mView = H.view;
       drawHome();
     }
   } else if (card) {
@@ -4070,7 +4119,7 @@ const ACT = {
   props: () => {
     const p = $('#props');
     p.hidden = !p.hidden;
-    localStorage.mPanel = p.hidden ? '0' : '1';
+    PS.mPanel = p.hidden ? '0' : '1';
     render();
   },
   minimap: () => setMmVis(!mmVisible()),
@@ -4101,7 +4150,7 @@ const ACT = {
       : document.documentElement.requestFullscreen(),
   theme: () => {
     theme = theme === 'dark' ? 'light' : 'dark';
-    localStorage.mTheme = theme;
+    PS.mTheme = theme;
     document.body.dataset.theme = theme;
     buildUI();
   },
