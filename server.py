@@ -9,8 +9,8 @@ from urllib.parse import urlparse, unquote, quote
 BASE = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(getattr(sys, '_MEIPASS', BASE), 'static')
 PROJ = os.path.join(BASE, 'projects')
-# Preferences live in static/preferences.json (next to the app, so they travel with the folder).
-PREFS = os.path.join(BASE if getattr(sys, 'frozen', False) else SITE, 'preferences.json')
+# Preferences live in projects/preferences.json (next to the maps, so they travel with them).
+PREFS = os.path.join(PROJ, 'preferences.json')
 MAXPREFS = 1024 * 1024
 HOST, PORT = '127.0.0.1', 8765
 MAXB = 25 * 1024 * 1024
@@ -210,6 +210,7 @@ def prefs_route(m, body):
         except (OSError, ValueError):
             return 200, {}
     if m == 'PUT':
+        os.makedirs(PROJ, exist_ok=True)
         if not all(isinstance(k, str) and isinstance(v, str) for k, v in body.items()) or len(json.dumps(body)) > MAXPREFS:
             raise Err(400, 'invalid_prefs')
         tmp = PREFS + '.tmp'

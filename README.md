@@ -227,7 +227,7 @@ Choose **File ▸ Export** or **File ▸ Import…** (also the Import buttons on
 - **Other mind map formats** (import and export), see the table below.
 - **Import**: always creates a new project and never overwrites an existing one. **Preview** shows the final map with export buttons.
 - **Theme**: light or dark.
-- **Preferences**: theme, recent projects, favorites, home view (grid or list), Properties panel visibility and last opened project are saved in `static/preferences.json`, not in the browser. The file is created automatically and updated about 0.3 s after each change.
+- **Preferences**: theme, recent projects, favorites, home view (grid or list), Properties panel visibility and last opened project are saved in `projects/preferences.json`, not in the browser. The file is created automatically and updated about 0.3 s after each change.
 
 ---
 
@@ -242,8 +242,8 @@ Mindly/
 ├── README.md
 ├── images/        ← 4 screenshots (home and editor, light and dark)
 ├── static/        ← index.html, style.css, app.js (the editor)
-│   └── preferences.json  ← your preferences (created automatically)
 └── projects/      ← your maps: one folder each, with project.json + metadata.json
+    └── preferences.json  ← your preferences (created automatically, do not delete)
 ```
 
 ### How it works
@@ -251,7 +251,7 @@ Mindly/
 - **Backend**: `server.py` serves the site and saves projects to disk through a small REST API. It listens only on `127.0.0.1:8765` and checks names, JSON structure and size (max ~25 MB).
 - **Frontend**: plain HTML, CSS and JavaScript with no framework or external libraries; the map is drawn in SVG. PDF, PNG and SVG are generated in the browser.
 - **Privacy**: nothing leaves your computer and it works fully offline.
-- **Data**: `project.json` holds blocks, links, settings, view and pages; `metadata.json` holds name, ID, dates and version. `static/preferences.json` holds the preferences (theme, recent, favorites, view, panel). Backup = copy the whole `Mindly` folder (or just `projects/` and `static/preferences.json`), or use Export JSON → Import.
+- **Data**: `project.json` holds blocks, links, settings, view and pages; `metadata.json` holds name, ID, dates and version. `projects/preferences.json` holds the preferences (theme, recent, favorites, view, panel). Backup = copy the whole `Mindly` folder (or just `projects/`, which already contains `preferences.json`), or use Export JSON → Import.
 
 | Method | Path | Function |
 |---|---|---|
@@ -259,13 +259,14 @@ Mindly/
 | `GET` / `PUT` / `DELETE` | `/api/projects/<id>` | read / save / move to Recycle Bin |
 | `GET` | `/api/projects/<id>/path` | folder path on disk |
 | `POST` | `/api/projects/<id>/rename` · `/duplicate` | rename / duplicate |
-| `GET` / `PUT` | `/api/prefs` | read / save `static/preferences.json` |
+| `GET` / `PUT` | `/api/prefs` | read / save `projects/preferences.json` |
 
 ### Portability
 
-- Mindly does not use the browser's storage: projects live in `projects/` and preferences in `static/preferences.json`.
+- Mindly does not use the browser's storage: projects live in `projects/` and preferences in `projects/preferences.json`.
 - To move Mindly (USB stick, another PC), copy the whole `Mindly` folder. Theme, recent projects and favorites come with it.
-- Preferences refer to projects by folder name, so keep `projects/` together with `static/preferences.json`.
+- Preferences refer to projects by folder name; since `preferences.json` is inside `projects/`, copying `projects/` is enough to keep both.
+- **Do not delete `projects/preferences.json`**: it holds your theme, recent projects, favorites and view settings. If you delete it, Mindly recreates it empty and you lose those settings (your maps are not affected).
 - On first start after updating from an older version, the preferences still stored in the browser are copied once into `preferences.json`. After that the browser copy is ignored and can be deleted.
 - If Mindly runs from a read-only drive, projects cannot be saved either: copy the folder to a writable location.
 - The minimap (position, size, pin) is not saved and starts off at every launch.
@@ -276,7 +277,7 @@ Mindly/
 - PDF export is an image (text not selectable); use SVG for vector output.
 - XMind, FreeMind, OPML and Markdown keep structure and text only (no colors, notes or images). The `.xmind` export has not been checked in every XMind version.
 - JSON, PDF, PNG, SVG and XMind cover every page; search, minimap and counters cover the current page; there are no links between pages (max 100 pages).
-- Preferences not applied? Check that `static/preferences.json` exists and is writable. Old version still showing? Reload with `Ctrl+F5`. Port 8765 busy? Mindly is already running: close the other window.
+- Preferences not applied? Check that `projects/preferences.json` exists and is writable. Old version still showing? Reload with `Ctrl+F5`. Port 8765 busy? Mindly is already running: close the other window.
 
 ---
 
