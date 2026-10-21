@@ -143,6 +143,7 @@ a_moveAlone|Move only this block (without its branch)
 a_layout|Tidy mode (invisible grid)
 a_minimap|Minimap
 a_childLeft|Add child node on the left
+a_childDown|Add child node below
 t_layoutTidy|Tidy mode on: blocks arrange themselves
 t_layoutFree|Free mode: blocks stay where you put them
 a_resizeProp|Resize keeping proportions
@@ -458,9 +459,9 @@ const byId = (id) => M.nodes.find((n) => n.id === id);
  * the two sides are independent. HID = ids of nodes currently hidden, CNT = hidden count per side. */
 let HID = new Set();
 const CNT = new Map();
-const colKey = (s) => (s === 'l' ? 'colL' : 'colR');
+const colKey = (s) => (s === 'l' ? 'colL' : s === 'b' ? 'colB' : 'colR');
 const childSide = (p, c) =>
-  M.settings.layout === 'tidy' ? sideOf(c) : c.x + c.w / 2 < p.x + p.w / 2 ? 'l' : 'r';
+  c.down ? 'b' : M.settings.layout === 'tidy' ? sideOf(c) : c.x + c.w / 2 < p.x + p.w / 2 ? 'l' : 'r';
 function kidsOn(n, s) {
   const seen = new Set(),
     out = [];
@@ -476,7 +477,7 @@ function calcHidden() {
   const h = new Set();
   CNT.clear();
   HID = h;
-  if (!M.nodes.some((n) => n.colL || n.colR)) return h;
+  if (!M.nodes.some((n) => n.colL || n.colR || n.colB)) return h;
   const by = new Map(M.nodes.map((n) => [n.id, n])),
     ch = new Map();
   for (const l of M.links) {
@@ -494,7 +495,7 @@ function calcHidden() {
     return out;
   };
   for (const n of M.nodes)
-    for (const s of ['r', 'l']) {
+    for (const s of ['r', 'l', 'b']) {
       if (!n[colKey(s)]) continue;
       const u = new Set();
       for (const c of kidsOn(n, s)) {
@@ -664,6 +665,7 @@ const SC = [
   ['g_edit', 'Ctrl+F', 'find'],
   ['g_create', 'Tab', 'child'],
   ['g_create', 'Shift+Tab', 'childLeft'],
+  ['g_create', 'Alt+Enter', 'childDown'],
   ['g_create', 'Enter', 'sibling'],
   ['g_create', 'F2', 'edit'],
   ['g_create', 'T', 'root'],
@@ -843,7 +845,7 @@ function geo(l) {
   if (!a || !b || HID.has(a.id) || HID.has(b.id)) return null;
   const ac = [a.x + a.w / 2, a.y + a.h / 2],
     bc = [b.x + b.w / 2, b.y + b.h / 2],
-    h = M.settings.layout === 'tidy' || Math.abs(bc[0] - ac[0]) >= Math.abs(bc[1] - ac[1]),
+    h = b.down ? false : M.settings.layout === 'tidy' || Math.abs(bc[0] - ac[0]) >= Math.abs(bc[1] - ac[1]),
     s = (h ? bc[0] >= ac[0] : bc[1] >= ac[1]) ? 1 : -1;
   let p, q, d, a1, a2;
   if (h) {
@@ -938,10 +940,6 @@ function overlay() {
           ['ne', n.x + n.w, n.y],
           ['sw', n.x, n.y + n.h],
           ['se', n.x + n.w, n.y + n.h],
-          ['n', n.x + n.w / 2, n.y],
-          ['s', n.x + n.w / 2, n.y + n.h],
-          ['w', n.x, n.y + n.h / 2],
-          ['e', n.x + n.w, n.y + n.h / 2],
         ]) {
           const s = 11 / z;
           h += `<rect class="hdl" data-h="${k}" x="${x - s / 2}" y="${y - s / 2}" width="${s}" height="${s}" stroke-width="${1 / z}"/>`;
@@ -954,16 +952,20 @@ function overlay() {
       if (n) {
         stackId = n.id;
         const cy = n.y + n.h / 2;
-        for (const s of ['r', 'l']) {
-          const sx = s === 'r' ? n.x + n.w + 22 / z : n.x - 22 / z,
+        for (const s of ['r', 'l', 'b']) {
+          const bx = n.x + n.w / 2,
+            sx = s === 'r' ? n.x + n.w + 22 / z : n.x - 22 / z,
+            at = (dv) => (s === 'b' ? [bx + dv / z, n.y + n.h + 22 / z] : [sx, cy + dv / z]),
             btn = (dy, g, d, extra = '', fs = 14) =>
-              `<circle class="cn" data-c="${d}"${extra} cx="${sx}" cy="${cy + dy / z}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${cy + dy / z}" font-size="${fs / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
-          h += btn(-30, '+', 'add') + btn(0, s === 'r' ? '→' : '←', 'link');
-          const k = colKey(s);
-          if (n[k] || kidsOn(n, s).length) {
+              `<circle class="cn" data-c="${d}"${extra} cx="${at(dy)[0]}" cy="${at(dy)[1]}" r="${11 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${at(dy)[0]}" y="${at(dy)[1]}" font-size="${fs / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${g}</text>`;
+          const k = colKey(s),
+            hasCol = !!(n[k] || kidsOn(n, s).length),
+            o = hasCol ? [-30, 0, 30] : [-15, 15]; /* the group of buttons is always centered on the side */
+          h += btn(o[0], '+', 'add', ` data-cs="${s}"`) + btn(o[1], s === 'r' ? '→' : s === 'l' ? '←' : '↓', 'link');
+          if (hasCol) {
             const cnt = CNT.get(n.id + ':' + s) || 0;
             h += btn(
-              30,
+              o[2],
               n[k] ? cnt : '−',
               'collapse',
               ` data-cn="${n.id}" data-cs="${s}"`,
@@ -976,10 +978,10 @@ function overlay() {
     /* collapsed sides stay visible as a small badge with the number of hidden nodes */
     for (const n of M.nodes) {
       if (HID.has(n.id)) continue;
-      for (const s of ['r', 'l']) {
+      for (const s of ['r', 'l', 'b']) {
         if (!n[colKey(s)] || stackId === n.id) continue;
-        const sx = s === 'r' ? n.x + n.w + 14 / z : n.x - 14 / z,
-          sy = n.y + n.h / 2;
+        const sx = s === 'r' ? n.x + n.w + 14 / z : s === 'b' ? n.x + n.w / 2 : n.x - 14 / z,
+          sy = s === 'b' ? n.y + n.h + 14 / z : n.y + n.h / 2;
         h += `<circle class="cn" data-c="collapse" data-cn="${n.id}" data-cs="${s}" cx="${sx}" cy="${sy}" r="${10 / z}" stroke="#fff" stroke-width="${1.5 / z}"/><text x="${sx}" y="${sy}" font-size="${11 / z}" fill="#fff" text-anchor="middle" dominant-baseline="central" style="pointer-events:none">${CNT.get(n.id + ':' + s) || 0}</text>`;
       }
     }
@@ -1164,7 +1166,10 @@ mmsvg.addEventListener('pointerdown', (e) => {
   mmCenterOn(pt[0], pt[1]);
   mmsvg.setPointerCapture(e.pointerId);
 });
-mmsvg.addEventListener('pointermove', (e) => {
+mmsvg.addEventListener('mousedown', (e) => {
+  if (e.target.dataset && e.target.dataset.c) e.preventDefault(); /* keep focus in the new block's editor */
+});
+svg.addEventListener('pointermove', (e) => {
   if (!mmPanDrag) return;
   const pt = mmToWorld(e.clientX, e.clientY);
   if (pt) mmCenterOn(pt[0], pt[1]);
@@ -1335,7 +1340,7 @@ const MENUS = [
     'm_edit',
     ['undo', 'redo', '-', 'cut', 'copy', 'paste', 'dup', 'del', '-', 'selAll', 'desel', '-', 'find'],
   ],
-  ['m_insert', ['root', 'node', 'child', 'childLeft', 'sibling', 'link', '-', 'newPage']],
+  ['m_insert', ['root', 'node', 'child', 'childLeft', 'childDown', 'sibling', 'link', '-', 'newPage']],
   [
     'm_view',
     [
@@ -2556,16 +2561,46 @@ function spawn(n, x, y, from, pl, side) {
   snapshot();
   const c = mk({ x, y, text: t('newNode') });
   fitNode(c);
-  if (side) c.side = side;
+  const par = byId(from),
+    tidy = M.settings.layout === 'tidy',
+    down = side === 'b' || !!(par && par.down) || !!(pl && n.down),
+    sibs = M.links
+      .filter((l) => l.from === from)
+      .map((l) => byId(l.to))
+      .filter((k) => k && !!k.down === down);
+  if (down) {
+    /* bottom branch: siblings sit in a row under the parent, ordered by horizontal CENTER */
+    c.down = true;
+    if (pl) {
+      c.x = tidy ? n.x + n.w / 2 + 1 - c.w / 2 : n.x + n.w + 24;
+      c.y = n.y;
+    } else {
+      c.y = par.y + par.h + 60;
+      c.x = sibs.length
+        ? tidy
+          ? Math.max(...sibs.map((k) => k.x + k.w / 2)) + 1 - c.w / 2
+          : Math.max(...sibs.map((k) => k.x + k.w)) + 24
+        : par.x + par.w / 2 - c.w / 2;
+    }
+  } else {
+    if (side) c.side = side;
+    /* tidy layout orders siblings by vertical CENTER: place the new block by its center, otherwise
+       taller siblings would push it above them and the links would no longer be symmetric */
+    if (tidy) {
+      if (pl) c.y = n.y + n.h / 2 + 1 - c.h / 2;
+      else if (sibs.length) c.y = Math.max(...sibs.map((k) => k.y + k.h / 2)) + 1 - c.h / 2;
+    }
+  }
   M.nodes.push(c);
+  freshNode = c.id;
   M.links.push(mkl({ ...(pl || {}), id: uid(), from, to: c.id, end: 'none' }));
-  const par = byId(from);
   if (par) delete par[colKey(childSide(par, c))];
   setSel([c.id]);
   markDirty();
   startEdit(c.id);
 }
 function sideOf(n, d = 0) {
+  if (n.down) return 'b';
   const l = M.links.find((x) => x.to === n.id),
     p = l && byId(l.from);
   if (!p || d > 50) return 'r';
@@ -2577,13 +2612,14 @@ function child(left) {
   if (!need()) return;
   const n = oneSel();
   if (!n) return toast(t('t_nosel'), 'err');
+  if (left === 'b' || n.down) return spawn(n, n.x, n.y + n.h + 60, n.id, null, 'b');
   const dir = left === true ? 'l' : sideOf(n),
     tidy = M.settings.layout === 'tidy',
     kids = M.links
       .filter((l) => l.from === n.id)
       .map((l) => byId(l.to))
       .filter(Boolean),
-    y = kids.length ? Math.max(...kids.map((k) => k.y)) + (tidy ? 1 : n.h + 24) : n.y;
+    y = kids.length ? Math.max(...kids.filter((k) => !k.down).map((k) => k.y), n.y - 1e9) + (tidy ? 1 : n.h + 24) : n.y;
   spawn(n, dir === 'l' ? n.x - 90 - 140 : n.x + n.w + 90, y, n.id, null, dir);
 }
 function sibling() {
@@ -2592,7 +2628,7 @@ function sibling() {
   if (!n) return toast(t('t_nosel'), 'err');
   const pl = M.links.find((l) => l.to === n.id);
   if (pl)
-    spawn(n, n.x, M.settings.layout === 'tidy' ? n.y + 1 : n.y + n.h + 24, pl.from, pl, n.side);
+    spawn(n, n.x, M.settings.layout === 'tidy' ? n.y + 1 : n.y + n.h + 24, pl.from, pl, n.down ? undefined : n.side);
   else child();
 }
 function del() {
@@ -2605,8 +2641,25 @@ function del() {
     return;
   }
   if (!sel.n.size) return;
+  if (editing || editingLink) return; /* never delete a block while its text is being edited */
   snapshot();
   const rm = new Set(sel.n);
+  /* deleting the title block removes everything connected to it (whole connected group) */
+  for (const id of [...sel.n]) {
+    const n = byId(id);
+    if (!n || !n.isTitle) continue;
+    const st = [id];
+    while (st.length) {
+      const i = st.pop();
+      for (const l of M.links) {
+        const o = l.from === i ? l.to : l.to === i ? l.from : null;
+        if (o && !rm.has(o) && byId(o)) {
+          rm.add(o);
+          st.push(o);
+        }
+      }
+    }
+  }
   for (const i of subtree([...sel.n])) if (HID.has(i)) rm.add(i); /* a collapsed branch goes with its node */
   M.nodes = M.nodes.filter((n) => !rm.has(n.id));
   M.links = M.links.filter((l) => byId(l.from) && byId(l.to));
@@ -2756,6 +2809,7 @@ function liveFit() {
   }
 }
 function startEdit(id) {
+  editEndedAt = Date.now() + 1500; /* Delete/Backspace right after creating/editing never removes the block */
   const n = byId(id);
   if (!n) return;
   editing = id;
@@ -2786,10 +2840,13 @@ function startEditLink(id) {
   ed.focus();
   ed.select();
 }
+let freshNode = null; /* id of the block just created: keyboard Delete/Backspace never removes it */
+let editEndedAt = 0; /* when the last text edit ended (guards Delete/Backspace key repeat) */
 function commitEdit() {
   const id = editing;
   if (!id) return;
   editing = null;
+  editEndedAt = Date.now();
   const ed = $('#editor');
   ed.hidden = true;
   restoreBase();
@@ -2808,6 +2865,7 @@ function commitEditLink() {
   const id = editingLink;
   if (!id) return;
   editingLink = null;
+  editEndedAt = Date.now();
   const ed = $('#editor');
   ed.hidden = true;
   const l = M.links.find((x) => x.id === id);
@@ -2820,6 +2878,7 @@ function commitEditLink() {
   buildPanel();
 }
 function cancelEdit() {
+  editEndedAt = Date.now();
   restoreBase();
   editing = null;
   editingLink = null;
@@ -2829,6 +2888,7 @@ function cancelEdit() {
 $('#editor').addEventListener('keydown', (e) => {
   const c = combo(e);
   e.stopPropagation();
+  if (['Enter', 'Esc', 'Tab', 'Shift+Tab'].includes(c)) freshNode = null;
   if (c === 'Enter') {
     e.preventDefault();
     if (editingLink) commitEditLink();
@@ -3980,11 +4040,30 @@ async function readMap(f) {
   if (root === 'xmap-content') return fromXmindXml(txt);
   throw 0;
 }
+/* an imported map always opens on its FIRST page (the top-level data is the active page, so swap) */
+function firstPageFirst(p) {
+  if (!p || !Array.isArray(p.pages) || p.pages.length < 2) return p;
+  const pg = p.pages.filter((x) => x && typeof x === 'object'),
+    first = pg[0],
+    act = pg.find((x) => x.id === p.activePage) || first;
+  if (!first || first === act) return p;
+  const out = { ...p, nodes: first.nodes || [], links: first.links || [], activePage: first.id };
+  if (first.view) out.view = first.view;
+  else delete out.view;
+  out.pages = pg.map((x) =>
+    x === first
+      ? { id: x.id, name: x.name }
+      : x === act
+        ? { id: x.id, name: x.name, nodes: p.nodes, links: p.links, view: p.view }
+        : x,
+  );
+  return out;
+}
 async function importOther(f) {
   const pages = await readMap(f),
     base = f.name.replace(/\.[^.]+$/, '') || t('untitled'),
     safe = (s) => String(s || '').replace(BADFN, ' ').replace(/\s+/g, ' ').trim().slice(0, 60),
-    p = treesToProject(pages);
+    p = firstPageFirst(treesToProject(pages));
   let name = safe(pages[0].tree.text) || safe(base) || t('untitled'),
     r;
   try {
@@ -4004,7 +4083,7 @@ $('#file').addEventListener('change', async (e) => {
         p = j.project || j;
       if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
       const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
-      const r = await api('POST', '/projects', { name, project: p });
+      const r = await api('POST', '/projects', { name, project: firstPageFirst(p) });
       await openProject(r.id);
     } else await importOther(f);
     toast(t('t_imported'));
@@ -4142,6 +4221,7 @@ const ACT = {
   },
   layout: toggleLayout,
   childLeft: () => child(true),
+  childDown: () => child('b'),
   grid: () => toggle('grid'),
   snap: () => toggle('snap'),
   full: () =>
@@ -4253,7 +4333,7 @@ function layoutAll() {
       if (l.from === n.id && !u.has(l.to)) {
         u.add(l.to);
         const c = byId(l.to);
-        if (c && !HID.has(c.id)) a.push(c);
+        if (c && !HID.has(c.id) && !c.down) a.push(c);
       }
     return a.sort((p, q) => p.y + p.h / 2 - q.y - q.h / 2);
   };
@@ -4301,6 +4381,109 @@ function layoutAll() {
         place(c, dir, y);
         y += hg(c) + GY;
       }
+    }
+  }
+  /* a node fed by 2+ parents sits halfway between them, so every incoming link is symmetric */
+  const desc = (n, o = []) => {
+    o.push(n);
+    (T.get(n.id) || []).forEach((c) => desc(c, o));
+    return o;
+  };
+  for (const n of M.nodes) {
+    if (HID.has(n.id)) continue;
+    const ps = [...new Set(M.links.filter((l) => l.to === n.id).map((l) => l.from))]
+      .map(byId)
+      .filter((p) => p && !HID.has(p.id));
+    if (ps.length < 2) continue;
+    const dy = (Math.min(...ps.map((p) => p.y + p.h / 2)) + Math.max(...ps.map((p) => p.y + p.h / 2))) / 2 - (n.y + n.h / 2);
+    if (Math.abs(dy) < 0.5) continue;
+    const grp = desc(n),
+      ids = new Set(grp.map((g) => g.id));
+    const clash = grp.some((g) =>
+      M.nodes.some(
+        (o) =>
+          !ids.has(o.id) && !HID.has(o.id) &&
+          g.x < o.x + o.w && g.x + g.w > o.x && g.y + dy < o.y + o.h && g.y + g.h + dy > o.y,
+      ),
+    );
+    if (!clash) grp.forEach((g) => (g.y += dy));
+  }
+  layoutDown(inL);
+}
+/* Bottom branches: independent of the right/left sides. The children sit in a row centered under
+   their parent, every subtree below its parent, widths adapt to the sizes of the blocks. If the
+   branch would touch something else (e.g. a huge map on the right) it slides down until it is free. */
+function layoutDown(inL) {
+  const GXV = 24,
+    GYV = 50,
+    byIdm = new Map(M.nodes.map((n) => [n.id, n])),
+    D = new Map(),
+    marked = new Set();
+  const kidsD = (n, all) => {
+    const u = new Set(),
+      a = [];
+    for (const l of M.links)
+      if (l.from === n.id && !u.has(l.to)) {
+        u.add(l.to);
+        const c = byIdm.get(l.to);
+        if (c && c !== n && !HID.has(c.id) && (all || c.down) && !marked.has(c.id)) a.push(c);
+      }
+    return a.sort((p, q) => p.x + p.w / 2 - q.x - q.w / 2);
+  };
+  const ew = (n) => Math.max(n.w, inL.has(n.id) ? inL.get(n.id).w + 8 : 0),
+    gy = (c) => Math.max(GYV, inL.has(c.id) ? inL.get(c.id).h + 30 : 0),
+    W = new Map(),
+    tw = (k) => (k.length ? k.reduce((a, c) => a + wd(c), 0) + GXV * (k.length - 1) : 0),
+    wd = (n) => {
+      if (!W.has(n.id)) W.set(n.id, Math.max(ew(n), tw(D.get(n.id) || [])));
+      return W.get(n.id);
+    };
+  const build = (n, all) => {
+    const k = kidsD(n, all);
+    k.forEach((c) => {
+      marked.add(c.id);
+      c.down = true;
+    });
+    D.set(n.id, k);
+    k.forEach((c) => build(c, true));
+  };
+  const placeKids = (n) => {
+    const k = D.get(n.id) || [];
+    let x = n.x + n.w / 2 - tw(k) / 2;
+    for (const c of k) {
+      c.y = n.y + n.h + gy(c);
+      c.x = x + (wd(c) - c.w) / 2;
+      placeKids(c);
+      x += wd(c) + GXV;
+    }
+  };
+  const heads = M.nodes.filter(
+    (n) => !n.down && !HID.has(n.id) && M.links.some((l) => l.from === n.id && byIdm.get(l.to) && byIdm.get(l.to).down),
+  );
+  for (const h of heads) {
+    build(h, false);
+    placeKids(h);
+    const grp = [];
+    (function walk(n) {
+      for (const c of D.get(n.id) || []) (grp.push(c), walk(c));
+    })(h);
+    const ids = new Set(grp.map((g) => g.id));
+    ids.add(h.id);
+    for (let i = 0; i < 60; i++) {
+      let dy = 0;
+      for (const g of grp)
+        for (const o of M.nodes)
+          if (
+            !ids.has(o.id) &&
+            !HID.has(o.id) &&
+            g.x < o.x + o.w + 10 &&
+            g.x + g.w + 10 > o.x &&
+            g.y - 8 < o.y + o.h &&
+            g.y + g.h + 8 > o.y
+          )
+            dy = Math.max(dy, o.y + o.h + 20 - g.y);
+      if (dy <= 0) break;
+      grp.forEach((g) => (g.y += dy));
     }
   }
 }
@@ -4384,6 +4567,7 @@ function linkClick(id) {
 }
 svg.addEventListener('pointerdown', (e) => {
   hidePop();
+  freshNode = null; /* any click on the map ends the protection of the just-created block */
   if (!cur) return;
   if (e.button === 2) {
     /* right button + drag on the background = multiple selection (same as Shift + drag) */
@@ -4415,8 +4599,8 @@ svg.addEventListener('pointerdown', (e) => {
     const n = byId([...sel.n][0]);
     if (n) {
       if (action === 'add') {
-        const isLeft = wx < n.x + n.w / 2;
-        child(isLeft);
+        const cs = e.target.dataset.cs;
+        child(cs === 'b' ? 'b' : cs === 'l' ? true : cs === 'r' ? false : wx < n.x + n.w / 2);
       } else if (action === 'link') {
         drag = { t: 'cn', id: n.id };
         conn = { id: n.id, x: wx, y: wy };
@@ -4623,6 +4807,8 @@ const endDrag = (e) => {
     else delete n.side;
     delete tn.colL;
     delete tn.colR;
+    delete tn.colB;
+    delete n.down;
   }
   if (d.t === 'mv' && d.moved) {
     const n = byId(d.id),
@@ -4776,6 +4962,13 @@ addEventListener('keydown', (e) => {
   const s = SC.find((x) => x[1] === c && x[2]);
   if (s) {
     e.preventDefault();
+    /* Delete/Backspace: ignore auto-repeat and presses right after typing, so emptying a block's
+       text can never also delete the block itself */
+    if (
+      s[2] === 'del' &&
+      (e.repeat || Date.now() - editEndedAt < 700 || (freshNode && sel.n.size === 1 && sel.n.has(freshNode)))
+    )
+      return;
     ACT[s[2]]();
   }
 });
