@@ -137,6 +137,10 @@ a_connect|Connect
 a_props|Properties
 a_pan|Pan the map (drag the background or Space + drag)
 a_zoomWheel|Zoom with mouse wheel
+a_pinch|Zoom with a trackpad pinch
+a_swipe|Scroll the map with a two-finger swipe
+a_trackpad|Trackpad mode (drag = select area)
+a_band2|Area selection (Trackpad mode)
 a_scrollWheel|Scroll the map
 a_band|Area selection
 a_moveAlone|Move only this block (without its branch)
@@ -336,6 +340,9 @@ hm_nothing|Nothing here
 hm_nothing2|No mind maps in this section.
 hm_foot|Mindly runs locally: your mind maps are saved in the "projects" folder on this computer.
 h_select|Click: select · double-click: edit · drag the background: pan · Ctrl+wheel: zoom · drag the ● to connect
+h_selectTp|Click: select · double-click: edit · drag the background: select area · two fingers: scroll · pinch: zoom · Space + drag: pan
+t_tpOn|Trackpad mode on: drag the background to select, two-finger swipe to scroll, pinch to zoom
+t_tpOff|Trackpad mode off: drag the background to pan
 h_link1|Connect: click the source node (Esc to cancel)
 h_link2|Now click the target node (Esc to cancel)
 ab_text|Mindly is a local mind map editor. All your data stays on your computer, in the "projects" folder.`
@@ -350,6 +357,8 @@ const t = (k, ...a) => {
   a.forEach((v, i) => (s = s.replace('{' + i + '}', () => v)));
   return s;
 };
+let tpOn = PS.mTrackpad !== '0'; /* Trackpad mode: ON by default; only an explicit OFF is remembered */
+const tpMode = () => tpOn;
 /* ==========================================================
  * STATE
  * ========================================================== */
@@ -678,9 +687,12 @@ const SC = [
   ['g_nav', '0', 'zoomReset'],
   ['g_nav', '1', 'fit'],
   ['g_nav', 'Space + drag', '', 'a_pan'],
+  ['g_nav', 'Pinch', '', 'a_pinch'],
+  ['g_nav', 'Two-finger swipe', '', 'a_swipe'],
   ['g_nav', 'Ctrl + wheel', '', 'a_zoomWheel'],
   ['g_nav', 'Wheel', '', 'a_scrollWheel'],
   ['g_sel', 'Shift + drag', '', 'a_band'],
+  ['g_sel', 'Drag (Trackpad mode)', '', 'a_band2'],
   ['g_sel', 'Drag onto block', '', 'a_reparent'],
   ['g_sel', 'Shift + resize', '', 'a_resizeProp'],
   ['g_sel', 'Alt + drag', '', 'a_moveAlone'],
@@ -1324,6 +1336,7 @@ function refreshTB() {
   on('grid', M.settings.grid);
   on('snap', M.settings.snap);
   on('layout', M.settings.layout === 'tidy');
+  on('trackpad', tpMode());
   on('link', tool === 'link');
   on('select', tool === 'select');
   on('minimap', mmVisible());
@@ -1356,6 +1369,7 @@ const MENUS = [
       'grid',
       'snap',
       'layout',
+      'trackpad',
       '-',
       'full',
       'theme',
@@ -1378,6 +1392,7 @@ const TB = [
   ['grid', '▦'],
   ['snap', '⌗'],
   ['layout', '⊞'],
+  ['trackpad', '✥'],
   ['minimap', '◫'],
 ];
 const TL = [
@@ -1442,7 +1457,7 @@ function setStat(s) {
   e.textContent = t('st_' + s);
 }
 function hint() {
-  $('#hint').textContent = tool === 'link' ? t(linkFrom ? 'h_link2' : 'h_link1') : t('h_select');
+  $('#hint').textContent = tool === 'link' ? t(linkFrom ? 'h_link2' : 'h_link1') : t(tpMode() ? 'h_selectTp' : 'h_select');
 }
 function toast(m, ty) {
   const e = document.createElement('div');
@@ -3389,6 +3404,13 @@ function fit() {
   render();
   viewDirty();
 }
+function setTpMode(v, quiet) {
+  tpOn = !!v;
+  PS.mTrackpad = v ? '1' : '0';
+  hint();
+  refreshTB();
+  if (!quiet) toast(t(v ? 't_tpOn' : 't_tpOff'));
+}
 function toggle(k) {
   M.settings[k] = !M.settings[k];
   render();
@@ -4202,6 +4224,7 @@ const ACT = {
     render();
   },
   minimap: () => setMmVis(!mmVisible()),
+  trackpad: () => setTpMode(!tpMode()),
   zoomIn: () => zoomBy(1.2),
   zoomOut: () => zoomBy(1 / 1.2),
   zoomReset: () => cur && zoomBy(1 / M.view.z),
@@ -4283,7 +4306,9 @@ document.addEventListener('click', (e) => {
                         ? M.settings.layout === 'tidy'
                         : a === 'minimap'
                           ? mmVisible()
-                          : false,
+                          : a === 'trackpad'
+                            ? tpMode()
+                            : false,
               },
       ),
       r.left,
@@ -4641,7 +4666,7 @@ svg.addEventListener('pointerdown', (e) => {
   } else if (le && tool !== 'link') setSel([], le.dataset.l);
   else {
     if (!mod && (sel.n.size || sel.l)) setSel([]);
-    if (mod) {
+    if (mod || tpMode()) {
       band = { x0: wx, y0: wy, x1: wx, y1: wy, base: new Set(sel.n) };
       drag = { t: 'band' };
     } else drag = { t: 'pan', sx: e.clientX, sy: e.clientY, vx: M.view.x, vy: M.view.y };
@@ -4660,7 +4685,7 @@ svg.addEventListener('pointermove', (e) => {
     const dx = wx - drag.sx,
       dy = wy - drag.sy;
     if (!drag.moved) {
-      if (Math.hypot(dx, dy) * z < 3) return;
+      if (Math.hypot(dx, dy) * z < 5) return; /* trackpad taps drift a few px */
       snapshot();
       drag.moved = true;
     }
@@ -4831,25 +4856,139 @@ const endDrag = (e) => {
 };
 svg.addEventListener('pointerup', endDrag);
 svg.addEventListener('pointercancel', endDrag);
+/* ==========================================================
+ * TRACKPAD / WHEEL / TOUCH NAVIGATION
+ * Same conventions as Figma, Miro, tldraw and Excalidraw:
+ * two-finger swipe = scroll, pinch (or Ctrl/Cmd + wheel) = zoom around the pointer.
+ * ========================================================== */
+const wheelPx = (e) => {
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? SR().height : 1;
+  return [e.deltaX * k, e.deltaY * k];
+};
+let wheelAcc = null,
+  wheelRaf = 0;
+function wheelFlush() {
+  wheelRaf = 0;
+  const a = wheelAcc;
+  wheelAcc = null;
+  if (!a || !cur) return;
+  M.view.x -= a.dx;
+  M.view.y -= a.dy;
+  if (a.zf !== 1) zoomAt(a.zf, a.cx, a.cy);
+  else {
+    render();
+    viewDirty();
+  }
+}
+/* events are merged and applied once per frame: trackpads fire 60-120 events/s */
+function wheelQueue(dx, dy, zf, cx, cy) {
+  const a = wheelAcc || (wheelAcc = { dx: 0, dy: 0, zf: 1, cx, cy });
+  a.dx += dx;
+  a.dy += dy;
+  a.zf *= zf;
+  if (zf !== 1) {
+    a.cx = cx;
+    a.cy = cy;
+  }
+  if (!wheelRaf) wheelRaf = requestAnimationFrame(wheelFlush);
+}
 svg.addEventListener(
   'wheel',
   (e) => {
     e.preventDefault();
     if (!cur) return;
-    if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
-    else {
-      const v = M.view;
-      if (e.shiftKey && !e.deltaX) v.x -= e.deltaY;
-      else {
-        v.x -= e.deltaX;
-        v.y -= e.deltaY;
-      }
-      render();
-      viewDirty();
-    }
+    const [dx, dy] = wheelPx(e),
+      big = Math.max(Math.abs(dx), Math.abs(dy)),
+      /* a trackpad sends many small deltas; a mouse wheel sends big steps */
+      pad = e.deltaMode === 0 && big > 0 && big < 40;
+    if (e.ctrlKey || e.metaKey) {
+      if (!dy) return; /* macOS smart-zoom (two-finger double tap) = ctrl+wheel with zero delta */
+      const d = pad ? Math.max(-25, Math.min(25, dy)) : dy;
+      wheelQueue(0, 0, Math.exp(-d * (pad ? 0.01 : 0.0015)), e.clientX, e.clientY);
+    } else if (e.shiftKey && !dx) wheelQueue(dy, 0, 1, 0, 0);
+    else wheelQueue(dx, dy, 1, 0, 0);
   },
   { passive: false },
 );
+/* the browser must never zoom the whole page while the map is on screen */
+$('#stage').addEventListener(
+  'wheel',
+  (e) => {
+    if (e.ctrlKey || e.metaKey) e.preventDefault();
+  },
+  { passive: false },
+);
+/* Safari (macOS) sends pinch as gesture events instead of ctrl+wheel */
+let gs = null;
+svg.addEventListener('gesturestart', (e) => {
+  e.preventDefault();
+  gs = cur ? { z: M.view.z } : null;
+});
+svg.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  if (cur && gs) zoomAt((gs.z * e.scale) / M.view.z, e.clientX, e.clientY);
+});
+svg.addEventListener('gestureend', (e) => {
+  e.preventDefault();
+  gs = null;
+});
+/* Touch screens (touch laptops, tablets): two fingers = pinch to zoom + pan */
+const tp2 = new Map();
+let pinch = null;
+const pinchGeom = () => {
+  const [a, b] = [...tp2.values()];
+  return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+};
+svg.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.pointerType !== 'touch' || !cur) return;
+    tp2.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (tp2.size < 2) return;
+    e.stopImmediatePropagation();
+    if (!pinch) {
+      drag = null;
+      band = null;
+      dropT = null;
+      conn = null;
+      const g = pinchGeom(),
+        r = SR(),
+        v = M.view;
+      pinch = { d0: g.d, z0: v.z, wx: (g.cx - r.left - v.x) / v.z, wy: (g.cy - r.top - v.y) / v.z };
+    }
+    svg.setPointerCapture(e.pointerId);
+  },
+  true,
+);
+svg.addEventListener(
+  'pointermove',
+  (e) => {
+    const p = e.pointerType === 'touch' && tp2.get(e.pointerId);
+    if (!p) return;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (!pinch || tp2.size < 2) return;
+    e.stopImmediatePropagation();
+    const g = pinchGeom(),
+      r = SR(),
+      v = M.view;
+    v.z = Math.min(4, Math.max(0.1, (pinch.z0 * g.d) / pinch.d0));
+    v.x = g.cx - r.left - pinch.wx * v.z;
+    v.y = g.cy - r.top - pinch.wy * v.z;
+    render();
+    viewDirty();
+  },
+  true,
+);
+const pinchEnd = (e) => {
+  if (e.pointerType !== 'touch') return;
+  const active = !!pinch;
+  tp2.delete(e.pointerId);
+  if (tp2.size < 2) pinch = null;
+  if (active) e.stopImmediatePropagation();
+};
+svg.addEventListener('pointerup', pinchEnd, true);
+svg.addEventListener('pointercancel', pinchEnd, true);
 svg.addEventListener('dblclick', (e) => {
   if (!cur || space) return;
   const el = document.elementFromPoint(e.clientX, e.clientY) || e.target,

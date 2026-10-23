@@ -2144,3 +2144,16 @@ header .hdr-circle:hover {
   fill: currentColor;
   flex: none;
 }
+
+/* ---- Trackpad / touch navigation ----
+   overscroll-behavior stops the two-finger horizontal swipe from triggering the browser's
+   Back/Forward navigation (and the rubber-band bounce) while you scroll the map. */
+html,
+body {
+  overscroll-behavior: none;
+}
+#stage {
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}

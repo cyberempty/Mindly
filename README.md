@@ -43,7 +43,7 @@ To quit: wait for **Saved** at the top, close the tab, then close the black serv
 | `N` / `T` | New block / Title block | `Ctrl+A` | Select all |
 | `L` | Link mode | `Ctrl+F` | Find in map |
 | `Ctrl+B` / `Ctrl+I` | Bold / Italic | `Ctrl+S` | Save |
-| `Ctrl+wheel` | Zoom | `Ctrl+Shift+S` | Save as / duplicate |
+| `Ctrl+wheel` / pinch | Zoom | `Ctrl+Shift+S` | Save as / duplicate |
 | `+` `-` `0` `1` | Zoom in / out / 100% / fit | `Shift+PageUp/Down` | Previous / next page |
 | `Space`+drag | Pan | `F1` or `?` | All shortcuts |
 
@@ -106,8 +106,8 @@ To quit: wait for **Saved** at the top, close the tab, then close the black serv
 | `+` / `-` (or `Ctrl++` / `Ctrl+-`) | Zoom in / out |
 | `0` | Reset zoom to 100% |
 | `1` (or `Ctrl+0`) | Fit the map to the screen |
-| `Ctrl+wheel` | Zoom around the pointer |
-| `Wheel` / `Shift+wheel` | Scroll vertically / horizontally |
+| `Ctrl+wheel` or **pinch** on the trackpad | Zoom around the pointer |
+| `Wheel` / `Shift+wheel` or **two-finger swipe** | Scroll vertically / horizontally |
 | `Space`+drag or middle button | Pan, even over a block |
 | `Shift+PageUp` / `Shift+PageDown` | Previous / next page |
 | `F11` | Full screen |
@@ -135,9 +135,26 @@ While you type in a text field (project name, Properties panel, search) the edit
 | Drag the background / middle button | Pan |
 | Wheel / `Shift`+wheel / `Ctrl`+wheel | Scroll / scroll sideways / zoom |
 
+### Laptop trackpad and touch screen
+
+Mindly follows the same conventions as Figma, Miro, tldraw and Excalidraw:
+
+| Gesture | What it does |
+|---|---|
+| Two-finger swipe | Scroll the map in any direction |
+| Pinch (two fingers) | Zoom around the pointer (also Safari on macOS) |
+| Two-finger tap | Context menu (right-click) |
+| Touch screen: two fingers | Pinch to zoom and pan at the same time |
+| Drag the background (**Trackpad mode**) | Box selection, instead of panning |
+| `Space`+drag or middle button | Pan, even in Trackpad mode |
+
+- **Trackpad mode** (View menu or the ✥ toolbar button): it is **on** by default; you can turn it off and Mindly remembers your choice (`mTrackpad` in `projects/preferences.json`). With it on, dragging the empty background draws a selection box (no `Shift` needed) and you move around with two fingers. Turn it off to go back to dragging the background to pan.
+- The browser's own page zoom and the two-finger horizontal swipe (Back/Forward) are blocked over the map, so a pinch or a swipe never leaves the page.
+- Gestures are merged and applied once per frame, and block drags start only after ~5 px so a slightly moving tap does not move a block.
+
 ### Interface buttons
 
-- **Toolbar**: Undo, Redo, Duplicate, Delete, Zoom −, zoom % (click = 100%), Zoom +, Fit to screen, Grid, Snap, Tidy/free mode, Minimap, Properties.
+- **Toolbar**: Undo, Redo, Duplicate, Delete, Zoom −, zoom % (click = 100%), Zoom +, Fit to screen, Grid, Snap, Tidy/free mode, Trackpad mode, Minimap, Properties.
 - **Tools panel (left)**: Title block, Select, New block, Child block, Sibling block, Link mode, and five shapes (rectangle, rounded rectangle, circle, ellipse, pill).
 - **Around a selected block**: ＋ add child, → / ← drag to link, − collapse/expand the branch (one set on each side); a small **B / I** bar above it.
 - **Top bar**: menus, project name (click to rename), save status, Projects, Help, theme.
@@ -148,7 +165,7 @@ While you type in a text field (project name, Properties panel, search) the edit
 - **File**: New project · Open project… · Save · Save as / duplicate… · Rename project… · Close project · Export ▸ (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown) · Import… (JSON, XMind, FreeMind, OPML, Markdown/text) · Preview… · Project path…
 - **Edit**: Undo · Redo · Cut · Copy · Paste · Duplicate · Delete · Select all · Deselect / cancel · Find in map…
 - **Insert**: Title block · New block · Child block · Child block on the left · Sibling block · Link mode · New page
-- **View**: Properties · Minimap · Zoom in / out / 100% · Fit map · Previous / next page · Grid · Snap to grid · Tidy mode · Full screen · Light/dark theme
+- **View**: Properties · Minimap · Zoom in / out / 100% · Fit map · Previous / next page · Grid · Snap to grid · Tidy mode · Trackpad mode · Full screen · Light/dark theme
 - **Help**: Keyboard shortcuts · About Mindly
 
 ### Context menus (right-click)
@@ -190,7 +207,7 @@ Applies to all selected blocks. **Block**: text, fill, text color, shape, width,
 
 ### Canvas
 
-- Zoom 10–400%, pan, fit to screen, 20 px dotted grid and snap (saved with the project), saved view position and zoom.
+- Zoom 10–400% (Ctrl+wheel, trackpad pinch, touch pinch), pan (two-finger swipe, Space+drag), fit to screen, 20 px dotted grid and snap (saved with the project), saved view position and zoom.
 - **Minimap** (off by default): click/drag to navigate, + / − zoom, click the % to reset, pin to the corner or drag it anywhere, resize from the four corners.
 
 ### Pages
