@@ -2578,7 +2578,7 @@ function spawn(n, x, y, from, pl, side) {
   fitNode(c);
   const par = byId(from),
     tidy = M.settings.layout === 'tidy',
-    down = side === 'b' || !!(par && par.down) || !!(pl && n.down),
+    down = side === 'b' || !!(pl && n.down),
     sibs = M.links
       .filter((l) => l.from === from)
       .map((l) => byId(l.to))
@@ -2619,7 +2619,7 @@ function sideOf(n, d = 0) {
   const l = M.links.find((x) => x.to === n.id),
     p = l && byId(l.from);
   if (!p || d > 50) return 'r';
-  if (!M.links.some((x) => x.to === p.id))
+  if (p.down || !M.links.some((x) => x.to === p.id))
     return n.side || (n.x + n.w / 2 < p.x + p.w / 2 ? 'l' : 'r');
   return sideOf(p, d + 1);
 }
@@ -2627,14 +2627,15 @@ function child(left) {
   if (!need()) return;
   const n = oneSel();
   if (!n) return toast(t('t_nosel'), 'err');
-  if (left === 'b' || n.down) return spawn(n, n.x, n.y + n.h + 60, n.id, null, 'b');
-  const dir = left === true ? 'l' : sideOf(n),
+  const auto = typeof left !== 'boolean' && left !== 'b'; /* Tab (no explicit side) */
+  if (left === 'b' || (n.down && auto)) return spawn(n, n.x, n.y + n.h + 60, n.id, null, 'b');
+  const dir = left === true ? 'l' : n.down && left === false ? 'r' : sideOf(n),
     tidy = M.settings.layout === 'tidy',
     kids = M.links
       .filter((l) => l.from === n.id)
       .map((l) => byId(l.to))
-      .filter(Boolean),
-    y = kids.length ? Math.max(...kids.filter((k) => !k.down).map((k) => k.y), n.y - 1e9) + (tidy ? 1 : n.h + 24) : n.y;
+      .filter((k) => k && !k.down),
+    y = kids.length ? Math.max(...kids.map((k) => k.y)) + (tidy ? 1 : n.h + 24) : n.y;
   spawn(n, dir === 'l' ? n.x - 90 - 140 : n.x + n.w + 90, y, n.id, null, dir);
 }
 function sibling() {
@@ -4442,56 +4443,171 @@ function layoutDown(inL) {
   const GXV = 24,
     GYV = 50,
     byIdm = new Map(M.nodes.map((n) => [n.id, n])),
-    D = new Map(),
-    marked = new Set();
-  const kidsD = (n, all) => {
+    D = new Map() /* down children of a node */,
+    TS = new Map() /* side-tree children of a node (right/left branches hanging off a down node) */,
+    SIDES = new Map() /* down node -> { r: [...], l: [...] } */,
+    HS = new Map(),
+    FP = new Map(),
+    marked = new Set(),
+    claimed = new Set(),
+    SD = new Set();
+  const kidsAll = (n) => {
     const u = new Set(),
       a = [];
     for (const l of M.links)
       if (l.from === n.id && !u.has(l.to)) {
         u.add(l.to);
         const c = byIdm.get(l.to);
-        if (c && c !== n && !HID.has(c.id) && (all || c.down) && !marked.has(c.id)) a.push(c);
+        if (c && c !== n && !HID.has(c.id)) a.push(c);
       }
-    return a.sort((p, q) => p.x + p.w / 2 - q.x - q.w / 2);
+    return a;
   };
+  const byX = (p, q) => p.x + p.w / 2 - q.x - q.w / 2,
+    byY = (p, q) => p.y + p.h / 2 - q.y - q.h / 2,
+    kidsD = (n) => kidsAll(n).filter((c) => c.down && !marked.has(c.id)).sort(byX),
+    kidsS = (n) => kidsAll(n).filter((c) => !c.down && !claimed.has(c.id) && !marked.has(c.id)).sort(byY);
   const ew = (n) => Math.max(n.w, inL.has(n.id) ? inL.get(n.id).w + 8 : 0),
+    eh = (n) => Math.max(n.h, inL.has(n.id) ? inL.get(n.id).h + 8 : 0),
     gy = (c) => Math.max(GYV, inL.has(c.id) ? inL.get(c.id).h + 30 : 0),
-    W = new Map(),
-    tw = (k) => (k.length ? k.reduce((a, c) => a + wd(c), 0) + GXV * (k.length - 1) : 0),
-    wd = (n) => {
-      if (!W.has(n.id)) W.set(n.id, Math.max(ew(n), tw(D.get(n.id) || [])));
-      return W.get(n.id);
+    gxs = (c) => Math.max(GX, inL.has(c.id) ? inL.get(c.id).w + 40 : 0);
+  /* horizontal room taken by the right/left branches of a node */
+  const sw = (c) => {
+      const k = TS.get(c.id) || [];
+      return c.w + (k.length ? Math.max(...k.map((x) => gxs(x) + sw(x))) : 0);
+    },
+    ext = (n, dir) => {
+      const g = (SIDES.get(n.id) || {})[dir] || [];
+      return g.length ? Math.max(...g.map((c) => gxs(c) + sw(c))) : 0;
+    },
+    /* reach of a node (itself, its right/left branches and its bottom row) from its own center */
+    fp = (n) => {
+      if (FP.has(n.id)) return FP.get(n.id);
+      const k = D.get(n.id) || [],
+        el = ext(n, 'l'),
+        er = ext(n, 'r');
+      let l = Math.max(ew(n) / 2, el ? n.w / 2 + el : 0),
+        r = Math.max(ew(n) / 2, er ? n.w / 2 + er : 0);
+      if (k.length) {
+        const o = offs(k);
+        k.forEach((c, i) => {
+          const f = fp(c);
+          l = Math.max(l, f[0] - o[i]);
+          r = Math.max(r, f[1] + o[i]);
+        });
+      }
+      FP.set(n.id, [l, r]);
+      return [l, r];
+    },
+    /* centers of a row of bottom children relative to the parent's center: the row is centered on the
+       PARENT and every block stays right under it, side branches never push a block sideways */
+    offs = (k) => {
+      const o = [0];
+      for (let i = 1; i < k.length; i++) o.push(o[i - 1] + fp(k[i - 1])[1] + GXV + fp(k[i])[0]);
+      const m = o[o.length - 1] / 2;
+      return o.map((v) => v - m);
     };
-  const build = (n, all) => {
-    const k = kidsD(n, all);
+  /* vertical room of the side branches (they are centered on their node) */
+  const hgS = (n) => {
+      if (!HS.has(n.id)) HS.set(n.id, Math.max(eh(n), totS(TS.get(n.id) || [])));
+      return HS.get(n.id);
+    },
+    totS = (k) => (k.length ? k.reduce((a, c) => a + hgS(c), 0) + GY * (k.length - 1) : 0),
+    vb = (n) => {
+      const s = SIDES.get(n.id);
+      return s ? Math.max(0, (Math.max(totS(s.r), totS(s.l)) - n.h) / 2) : 0;
+    };
+  const build = (n, dn) => {
+    const k = kidsD(n);
     k.forEach((c) => {
       marked.add(c.id);
       c.down = true;
     });
     D.set(n.id, k);
-    k.forEach((c) => build(c, true));
+    k.forEach((c) => {
+      dn.push(c);
+      build(c, dn);
+    });
   };
-  const placeKids = (n) => {
-    const k = D.get(n.id) || [];
-    let x = n.x + n.w / 2 - tw(k) / 2;
+  const buildS = (n) => {
+    const k = kidsS(n);
+    k.forEach((c) => claimed.add(c.id));
+    TS.set(n.id, k);
+    k.forEach(buildS);
+  };
+  const sides = (c) => {
+    const g = kidsS(c),
+      cx = c.x + c.w / 2;
+    g.forEach((k) => {
+      claimed.add(k.id);
+      if (k.side !== 'l' && k.side !== 'r') k.side = k.x + k.w / 2 < cx ? 'l' : 'r';
+    });
+    SIDES.set(c.id, { r: g.filter((k) => k.side === 'r'), l: g.filter((k) => k.side === 'l') });
+    g.forEach(buildS);
+  };
+  const placeS = (n, dir, top) => {
+    const k = TS.get(n.id) || [],
+      h = hgS(n);
+    n.y = top + (h - n.h) / 2;
+    let y = top + (h - totS(k)) / 2;
     for (const c of k) {
-      c.y = n.y + n.h + gy(c);
-      c.x = x + (wd(c) - c.w) / 2;
-      placeKids(c);
-      x += wd(c) + GXV;
+      c.x = dir === 'r' ? n.x + n.w + gxs(c) : n.x - gxs(c) - c.w;
+      placeS(c, dir, y);
+      y += hgS(c) + GY;
     }
   };
-  const heads = M.nodes.filter(
-    (n) => !n.down && !HID.has(n.id) && M.links.some((l) => l.from === n.id && byIdm.get(l.to) && byIdm.get(l.to).down),
-  );
-  for (const h of heads) {
-    build(h, false);
+  const placeSides = (n) => {
+    const s = SIDES.get(n.id);
+    if (!s) return;
+    for (const dir of ['r', 'l']) {
+      const g = s[dir];
+      let y = n.y + n.h / 2 - totS(g) / 2;
+      for (const c of g) {
+        c.x = dir === 'r' ? n.x + n.w + gxs(c) : n.x - gxs(c) - c.w;
+        placeS(c, dir, y);
+        y += hgS(c) + GY;
+      }
+    }
+  };
+  const placeKids = (n) => {
+    const k = D.get(n.id) || [],
+      o = offs(k),
+      cx = n.x + n.w / 2;
+    k.forEach((c, i) => {
+      c.y = n.y + n.h + vb(n) + gy(c);
+      c.x = cx + o[i] - c.w / 2;
+      placeSides(c);
+      placeKids(c);
+    });
+  };
+  /* a node hanging off a down node (and everything on its right/left) is positioned by that branch */
+  const markSD = (c) => {
+    if (SD.has(c.id)) return;
+    SD.add(c.id);
+    for (const k of kidsAll(c)) if (!k.down) markSD(k);
+  };
+  for (const d of M.nodes) if (d.down && !HID.has(d.id)) for (const c of kidsAll(d)) if (!c.down) markSD(c);
+  const processHead = (h) => {
+    const dn = [];
+    build(h, dn);
+    dn.forEach(sides);
     placeKids(h);
-    const grp = [];
-    (function walk(n) {
-      for (const c of D.get(n.id) || []) (grp.push(c), walk(c));
-    })(h);
+    const sideNodes = [],
+      gather = (n) => {
+        for (const c of TS.get(n.id) || []) {
+          sideNodes.push(c);
+          gather(c);
+        }
+      };
+    for (const d of dn) {
+      const s = SIDES.get(d.id);
+      for (const c of [...s.r, ...s.l]) {
+        sideNodes.push(c);
+        gather(c);
+      }
+    }
+    const grp = [...dn, ...sideNodes];
+    /* a right/left block of a down node can itself have a bottom branch */
+    for (const x of sideNodes) if (kidsAll(x).some((k) => k.down && !marked.has(k.id))) grp.push(...processHead(x));
     const ids = new Set(grp.map((g) => g.id));
     ids.add(h.id);
     for (let i = 0; i < 60; i++) {
@@ -4510,7 +4626,10 @@ function layoutDown(inL) {
       if (dy <= 0) break;
       grp.forEach((g) => (g.y += dy));
     }
-  }
+    return grp;
+  };
+  const heads = M.nodes.filter((n) => !n.down && !HID.has(n.id) && !SD.has(n.id) && kidsAll(n).some((k) => k.down));
+  for (const h of heads) processHead(h);
 }
 function toggleLayout() {
   if (!need()) return;
