@@ -11,7 +11,8 @@ SITE = os.path.join(getattr(sys, '_MEIPASS', BASE), 'static')
 PROJ = os.path.join(BASE, 'projects')
 # Preferences live in projects/preferences.json (next to the maps, so they travel with them).
 PREFS = os.path.join(PROJ, 'preferences.json')
-MAXPREFS = 1024 * 1024
+MAXPREFS = 8 * 1024 * 1024  # includes the shared copy/paste clipboard (key mClip)
+PREFS_LOCK = threading.Lock()  # several browser tabs may save preferences at the same time
 HOST, PORT = '127.0.0.1', 8765
 MAXB = 25 * 1024 * 1024
 MAXPAGES = 100
@@ -209,14 +210,42 @@ def prefs_route(m, body):
             return 200, d if isinstance(d, dict) else {}
         except (OSError, ValueError):
             return 200, {}
+    if m == 'POST':
+        # Merge: {"set": {key: value}, "remove": [key]}. Each tab sends only the keys it changed,
+        # so several tabs never overwrite each other's preferences.
+        st, rm = body.get('set', {}), body.get('remove', [])
+        if (not isinstance(st, dict) or not isinstance(rm, list)
+                or not all(isinstance(k, str) and isinstance(x, str) for k, x in st.items())
+                or not all(isinstance(k, str) for k in rm)):
+            raise Err(400, 'invalid_prefs')
+        os.makedirs(PROJ, exist_ok=True)
+        with PREFS_LOCK:
+            try:
+                with open(PREFS, encoding='utf-8') as fh:
+                    d = json.load(fh)
+                if not isinstance(d, dict):
+                    d = {}
+            except (OSError, ValueError):
+                d = {}
+            d.update(st)
+            for k in rm:
+                d.pop(k, None)
+            if len(json.dumps(d)) > MAXPREFS:
+                raise Err(400, 'invalid_prefs')
+            tmp = PREFS + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as fh:
+                json.dump(d, fh, ensure_ascii=False, indent=1)
+            os.replace(tmp, PREFS)
+        return 200, {'ok': True}
     if m == 'PUT':
         os.makedirs(PROJ, exist_ok=True)
         if not all(isinstance(k, str) and isinstance(v, str) for k, v in body.items()) or len(json.dumps(body)) > MAXPREFS:
             raise Err(400, 'invalid_prefs')
-        tmp = PREFS + '.tmp'
-        with open(tmp, 'w', encoding='utf-8') as fh:
-            json.dump(body, fh, ensure_ascii=False, indent=1)
-        os.replace(tmp, PREFS)
+        with PREFS_LOCK:
+            tmp = PREFS + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as fh:
+                json.dump(body, fh, ensure_ascii=False, indent=1)
+            os.replace(tmp, PREFS)
         return 200, {'ok': True}
     raise Err(404, 'not_found')
 
@@ -349,6 +378,13 @@ def open_browser(url):
 
 if __name__ == '__main__':
     os.makedirs(PROJ, exist_ok=True)
+    try:  # the copy/paste clipboard is temporary: start with an empty one
+        with open(PREFS, encoding='utf-8') as fh:
+            _d = json.load(fh)
+        if isinstance(_d, dict) and _d.pop('mClip', None) is not None:
+            prefs_route('PUT', _d)
+    except (OSError, ValueError):
+        pass
     url = 'http://%s:%d/' % (HOST, PORT)
     try:
         srv = ThreadingHTTPServer((HOST, PORT), H)

@@ -31,7 +31,8 @@ To quit: wait for **Saved** at the top, close the tab, then close the black serv
 1. In the Projects window click **New project** (or **Import** a `.json`).
 2. Select the central block, press **`Tab`** and type: a linked child appears. **`Enter`** adds a sibling, **`Esc`** stops.
 3. Everything saves automatically about 1.5 seconds after each change.
-4. Export from **File ▸ Export** (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown). Import from **File ▸ Import…** or the Projects window.
+4. You can select **several files at once** when importing. With 2 or more, Mindly asks: **Separate projects** (each file becomes its own project, exactly as if imported one at a time, and none is opened automatically) or **One project, one page per file** (a single project whose pages follow the imported files; a file that already has pages keeps them).
+5. Export from **File ▸ Export** (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown). Import from **File ▸ Import…** or the Projects window.
 
 ### Quick commands
 
@@ -188,7 +189,7 @@ Mindly follows the same conventions as Figma, Miro, tldraw and Excalidraw:
 - **Change parent**: drag a block onto another; loops are prevented.
 - **Collapse / expand** each side of a block independently; a badge shows the hidden count. The state is saved and undoable.
 - **Search**: live, case- and accent-insensitive; matches are outlined in orange, others fade; `Enter` / `Shift+Enter` move between matches and open collapsed branches.
-- **Copy / cut / paste / duplicate**: include the links between the selected blocks; paste also works between pages.
+- **Copy / cut / paste / duplicate**: include the links between the selected blocks; paste works between pages, between projects and between browser tabs (see [Multiple tabs](#multiple-tabs)).
 
 ### Links
 
@@ -276,7 +277,18 @@ Mindly/
 | `GET` / `PUT` / `DELETE` | `/api/projects/<id>` | read / save / move to Recycle Bin |
 | `GET` | `/api/projects/<id>/path` | folder path on disk |
 | `POST` | `/api/projects/<id>/rename` · `/duplicate` | rename / duplicate |
-| `GET` / `PUT` | `/api/prefs` | read / save `projects/preferences.json` |
+| `GET` / `PUT` | `/api/prefs` | read / replace `projects/preferences.json` |
+| `POST` | `/api/prefs` | merge changed keys `{"set": {…}, "remove": […]}` (used by the editor, safe with several tabs) |
+
+### Multiple tabs
+
+Open Mindly in as many browser tabs as you like (File ▸ **New browser tab**, or **↗** on a project in the home / Projects window, or `Ctrl`+click / middle-click on a project).
+
+- **Separate projects**: each tab works on its own project, with its own undo history and its own saving. The tab's address ends with `#project-folder`, so reloading the tab reopens the same project.
+- **One project, one tab**: a project open in a tab cannot be opened, renamed or deleted from another tab (a message tells you); this prevents two tabs from overwriting each other.
+- **Copy and paste across tabs, pages and projects**: select, `Ctrl+C` (or `Ctrl+X`) in one tab, then `Ctrl+V` in another tab, page or project. Links between the copied blocks are kept. Pasted into a *different* page or project, blocks keep their position; on the *same* page they are shifted slightly.
+- **Nothing in the browser**: Mindly stores nothing in the browser (no localStorage, no cookies, no cache; the server sends `no-store`). Preferences **and the copy/paste clipboard** live in `projects/preferences.json` (clipboard key `mClip`, emptied each time the server starts). Anything older versions left in the browser is erased on load.
+- **Shared preferences**: theme, recent projects, favorites and view stay in sync between tabs; the minimap state is per tab.
 
 ### Portability
 

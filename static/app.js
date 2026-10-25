@@ -23,53 +23,94 @@
  * Companion files: index.html (markup), style.css (styles), ../server.py (local API).
  */
 /* ==========================================================
- * PREFERENCES: stored in static/preferences.json (via the local server),
+ * PREFERENCES: stored in projects/preferences.json (via the local server),
  * not in the browser, so they follow the folder (USB stick, other PC).
- * PS works like localStorage: PS.key = 'value', PS.key, PS.removeItem('key').
+ * Several tabs can be open at once: each tab only sends the keys it changed (the server merges
+ * them) and tabs tell each other about changes (BroadcastChannel).
+ * PS works like localStorage (but nothing is stored in the browser): PS.key = 'value', PS.key, PS.removeItem('key').
  * ========================================================== */
 const PS = (() => {
+  /* Keys that belong to ONE tab only: never saved to disk, never shared between tabs. */
+  const LOCAL = new Set(['mMinimap', 'mLast']);
   let data = {};
+  const pending = { set: {}, remove: new Set() }; /* changes not yet written to disk */
   let t = null;
+  let chan = null;
+  try {
+    chan = new BroadcastChannel('mindly-prefs');
+  } catch (e) {}
   try {
     const x = new XMLHttpRequest(); /* synchronous: preferences are needed before the UI is built */
     x.open('GET', '/api/prefs', false);
     x.send();
     if (x.status === 200) data = JSON.parse(x.responseText) || {};
   } catch (e) {}
-  let migrated = false;
-  if (!Object.keys(data).length) {
-    /* one-time migration of the old browser preferences */
-    try {
-      ['mTheme', 'mRecent', 'mFav', 'mView', 'mPanel', 'mLast'].forEach((k) => {
-        const v = window.localStorage.getItem(k);
-        if (v != null) data[k] = v;
-      });
-      migrated = Object.keys(data).length > 0;
-    } catch (e) {}
-  }
+  /* Nothing is kept in the browser: remove anything older versions may have left there. */
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (e) {}
+  /* Only the keys changed by THIS tab are sent: the server merges them into the file, so two
+     tabs can never overwrite each other's preferences. */
   const flush = () => {
     clearTimeout(t);
     t = null;
+    const body = { set: pending.set, remove: [...pending.remove] };
+    if (!Object.keys(body.set).length && !body.remove.length) return;
+    pending.set = {};
+    pending.remove = new Set();
     try {
       fetch('/api/prefs', {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
         keepalive: true,
       });
+    } catch (e) {}
+    try {
+      chan && chan.postMessage(body);
     } catch (e) {}
   };
   const later = () => {
     clearTimeout(t);
     t = setTimeout(flush, 300);
   };
+  const apply = (body) => {
+    let changed = false;
+    for (const [k, v] of Object.entries(body.set || {}))
+      if (!LOCAL.has(k) && !(k in pending.set) && data[k] !== v) (data[k] = v), (changed = true);
+    for (const k of body.remove || [])
+      if (!LOCAL.has(k) && !pending.remove.has(k) && k in data) delete data[k], (changed = true);
+    if (changed && typeof onPrefs === 'function') onPrefs();
+  };
+  if (chan) chan.onmessage = (e) => e.data && apply(e.data);
+  /* safety net (e.g. BroadcastChannel unavailable): re-read the file when the tab regains focus */
+  const pull = async () => {
+    try {
+      const r = await fetch('/api/prefs', { cache: 'no-store' });
+      if (!r.ok) return;
+      const d = await r.json();
+      apply({ set: d, remove: Object.keys(data).filter((k) => !LOCAL.has(k) && !(k in d)) });
+    } catch (e) {}
+  };
+  addEventListener('focus', pull);
   addEventListener('pagehide', () => t && flush());
-  if (migrated) later();
   return new Proxy(data, {
-    get: (o, k) => (k === 'removeItem' ? (key) => (delete o[key], later()) : o[k]),
-    set: (o, k, v) => ((o[k] = String(v)), later(), true),
+    get: (o, k) =>
+      k === 'flushNow'
+        ? flush
+        : k === 'removeItem'
+        ? (key) => (delete o[key], !LOCAL.has(key) && (delete pending.set[key], pending.remove.add(key), later()))
+        : o[k],
+    set: (o, k, v) => (
+      (o[k] = String(v)),
+      !LOCAL.has(k) && ((pending.set[k] = o[k]), pending.remove.delete(k), later()),
+      true
+    ),
   });
 })();
+/* called when ANOTHER tab changed a preference (assigned further below) */
+let onPrefs = null;
 
 'use strict';
 const $ = (s) => document.querySelector(s),
@@ -85,6 +126,7 @@ const $ = (s) => document.querySelector(s),
 const D = {};
 `a_new|New project
 a_open|Open project…
+a_newTab|New browser tab
 a_save|Save
 a_saveas|Save as / duplicate…
 a_close|Close project
@@ -225,9 +267,18 @@ t_imported|Import completed
 t_saveErr|Save error
 t_loadErr|Load error
 t_importErr|Invalid file
+t_importedN|{0} projects imported
+t_importPartial|{0} of {1} files could not be imported
+d_impTitle|Import {0} files
+d_impMsg|You selected {0} files. Import them as separate projects (none is opened automatically), or put them all in one project with one page per file?
+b_impSep|Separate projects
+b_impOne|One project, one page per file
+imp_merged|Imported maps
 t_empty|The map is empty
 t_nosel|Select a node first
 t_noproj|Open or create a project
+t_openElsewhere|This project is already open in another tab
+t_clipLocal|Copied (too large to share with other tabs)
 e_invalid_name|Invalid name
 e_not_found|Project not found
 e_invalid_project|Invalid project data
@@ -253,6 +304,7 @@ b_open|Open
 b_close|Close
 b_dup|Duplicate
 b_ren|Rename
+b_tab|Open in new tab
 copyOf|Copy of {0}
 untitled|Untitled map
 central|Central idea
@@ -1347,7 +1399,7 @@ function refreshTB() {
 const MENUS = [
   [
     'm_file',
-    ['new', 'open', 'save', 'saveas', 'rename', 'close', '-', 'export', 'import', '-', 'preview', 'path'],
+    ['new', 'newTab', 'open', 'save', 'saveas', 'rename', 'close', '-', 'export', 'import', '-', 'preview', 'path'],
   ],
   [
     'm_edit',
@@ -2005,6 +2057,38 @@ addEventListener('pagehide', () => {
 /* ==========================================================
  * PROJECTS
  * ========================================================== */
+/* One project per tab: a Web Lock named after the project is held while it is open, so the same
+   project can never be edited (and saved) from two tabs at once. Different projects are fully
+   independent in different tabs. The tab's URL (#project-folder) lets a reload reopen it. */
+let projLock = null;
+function tryLock(id) {
+  if (!navigator.locks) return Promise.resolve({ id, release() {} });
+  return new Promise((resolve) => {
+    navigator.locks.request('mindly:' + id, { ifAvailable: true }, (lock) => {
+      if (!lock) return void resolve(null);
+      return new Promise((release) => resolve({ id, release }));
+    });
+  });
+}
+function setLock(h) {
+  if (projLock) projLock.release();
+  projLock = h;
+}
+async function relock(id) {
+  const old = projLock;
+  if (old) (old.release(), (projLock = null));
+  projLock = await tryLock(id);
+}
+async function openElsewhere(id) {
+  if (!navigator.locks || (cur && cur.id === id)) return false;
+  const h = await tryLock(id);
+  if (h) h.release();
+  return !h;
+}
+const setHash = (id) =>
+  history.replaceState(null, '', location.pathname + location.search + (id ? '#' + encodeURIComponent(id) : ''));
+const openInTab = (id) =>
+  window.open(location.pathname + (id ? '#' + encodeURIComponent(id) : ''), '_blank', 'noopener');
 const recs = () => {
   try {
     return JSON.parse(PS.mRecent || '[]');
@@ -2029,6 +2113,8 @@ function resetCur() {
   editBase = null;
   $('#editor').hidden = true;
   PS.removeItem('mLast');
+  setLock(null);
+  setHash('');
   setStat('none');
   updTitle();
   render();
@@ -2036,6 +2122,11 @@ function resetCur() {
 }
 async function openProject(id) {
   if (cur && dirty && !(await save(false))) return;
+  let lk = null;
+  if (!(cur && cur.id === id)) {
+    lk = await tryLock(id);
+    if (!lk) return toast(t('t_openElsewhere'), 'err');
+  }
   try {
     const r = await api('GET', '/projects/' + encodeURIComponent(id));
     cur = {
@@ -2060,6 +2151,8 @@ async function openProject(id) {
     linkFrom = null;
     setRecs([id, ...recs().filter((x) => x !== id)]);
     PS.mLast = id;
+    if (lk) setLock(lk);
+    setHash(id);
     setStat('saved');
     updTitle();
     hint();
@@ -2067,6 +2160,8 @@ async function openProject(id) {
     buildPanel();
     pagesRender();
   } catch (e) {
+    if (lk) lk.release();
+    if (!cur) setHash('');
     err(e, 't_loadErr');
   }
 }
@@ -2106,6 +2201,8 @@ async function syncName(txt) {
     cur.id = r.id;
     cur.name = r.metadata.name;
     PS.mLast = r.id;
+    await relock(r.id);
+    setHash(r.id);
     setRecs(recs().map((x) => (x === old ? r.id : x)));
     setFavs(favs().map((x) => (x === old ? r.id : x)));
     updTitle();
@@ -2119,6 +2216,7 @@ async function syncName(txt) {
 async function renameProject(id, name) {
   const v = await ask(t('d_rename'), t('d_name'), name);
   if (v == null || v === name) return;
+  if (await openElsewhere(id)) return toast(t('t_openElsewhere'), 'err');
   if (cur && cur.id === id) await save(false);
   try {
     const r = await api('POST', '/projects/' + encodeURIComponent(id) + '/rename', { name: v });
@@ -2127,6 +2225,8 @@ async function renameProject(id, name) {
       cur.name = r.metadata.name;
       updTitle();
       PS.mLast = r.id;
+      await relock(r.id);
+      setHash(r.id);
     }
     setRecs(recs().map((x) => (x === id ? r.id : x)));
     setFavs(favs().map((x) => (x === id ? r.id : x)));
@@ -2150,6 +2250,7 @@ async function dupProject(id, name) {
   }
 }
 async function deleteProject(id, name) {
+  if (await openElsewhere(id)) return toast(t('t_openElsewhere'), 'err');
   if (!(await confirmDlg(t('d_delTitle'), t('d_delMsg', name), t('d_delYes')))) return;
   const choice = await deleteChoiceDlg(name);
   if (!choice) return;
@@ -2261,7 +2362,7 @@ async function manager() {
       ? a
           .map(
             (p) =>
-              `<div class="row" data-r="open" data-id="${esc(p.id)}" tabindex="0"><div class="nm"><b>${esc(p.name)}</b><small>${t('pm_modified')}: ${fmtD(p.modified)} · ${t('pm_created')}: ${fmtD(p.created)}</small></div><button data-r="open" data-id="${esc(p.id)}">${t('b_open')}</button><button data-r="ren" data-id="${esc(p.id)}" title="${t('b_ren')}">✎</button><button data-r="dup" data-id="${esc(p.id)}" title="${t('b_dup')}">⧉</button><button data-r="del" data-id="${esc(p.id)}" title="${t('b_delete')}">✕</button></div>`,
+              `<div class="row" data-r="open" data-id="${esc(p.id)}" tabindex="0"><div class="nm"><b>${esc(p.name)}</b><small>${t('pm_modified')}: ${fmtD(p.modified)} · ${t('pm_created')}: ${fmtD(p.created)}</small></div><button data-r="open" data-id="${esc(p.id)}">${t('b_open')}</button><button data-r="tab" data-id="${esc(p.id)}" title="${t('b_tab')}">↗</button><button data-r="ren" data-id="${esc(p.id)}" title="${t('b_ren')}">✎</button><button data-r="dup" data-id="${esc(p.id)}" title="${t('b_dup')}">⧉</button><button data-r="del" data-id="${esc(p.id)}" title="${t('b_delete')}">✕</button></div>`,
           )
           .join('')
       : `<p class="muted">${t('pm_none')}</p>`;
@@ -2280,7 +2381,8 @@ async function manager() {
     if (r === 'open') {
       closeModal();
       openProject(id);
-    } else if (r === 'new') newProject();
+    } else if (r === 'tab') openInTab(id);
+    else if (r === 'new') newProject();
     else if (r === 'import') {
       $('#file').click();
     } else if (r === 'ren') {
@@ -2439,7 +2541,7 @@ function homeActions(p, all) {
   const star = favs().includes(p.id),
     b = (cls, h, txt, title) =>
       `<button class="row-icon-btn ${cls}" data-h="${h}" title="${title}">${txt}</button>`;
-  return `<div class="home-actions">${all ? b('', 'ren', '✎', t('b_ren')) + b('', 'dup', '⧉', t('b_dup')) : ''}${b('star' + (star ? ' active' : ''), 'fav', star ? '★' : '☆', t('hm_star'))}${b('trash', 'del', '✕', t('b_delete'))}</div>`;
+  return `<div class="home-actions">${all ? b('', 'tab', '↗', t('b_tab')) + b('', 'ren', '✎', t('b_ren')) + b('', 'dup', '⧉', t('b_dup')) : ''}${b('star' + (star ? ' active' : ''), 'fav', star ? '★' : '☆', t('hm_star'))}${b('trash', 'del', '✕', t('b_delete'))}</div>`;
 }
 function drawHome() {
   const box = $('#hlist');
@@ -2479,7 +2581,7 @@ function drawHome() {
     : `<div class="home-grid">${a
         .map(
           (p) =>
-            `<div class="home-card" data-id="${esc(p.id)}" tabindex="0" title="${esc(p.name)}"><div class="home-card-thumb" data-th="${esc(p.id)}"></div><div class="home-card-tools"><button class="row-icon-btn" data-h="ren" title="${t('b_ren')}">✎</button><button class="row-icon-btn" data-h="dup" title="${t('b_dup')}">⧉</button></div><div class="home-card-foot">${icon}<div class="home-card-meta"><div class="home-card-title">${esc(p.name)}</div><div class="home-card-date">${homeDate(p.modified)}</div></div>${homeActions(p, false)}</div></div>`,
+            `<div class="home-card" data-id="${esc(p.id)}" tabindex="0" title="${esc(p.name)}"><div class="home-card-thumb" data-th="${esc(p.id)}"></div><div class="home-card-tools"><button class="row-icon-btn" data-h="tab" title="${t('b_tab')}">↗</button><button class="row-icon-btn" data-h="ren" title="${t('b_ren')}">✎</button><button class="row-icon-btn" data-h="dup" title="${t('b_dup')}">⧉</button></div><div class="home-card-foot">${icon}<div class="home-card-meta"><div class="home-card-title">${esc(p.name)}</div><div class="home-card-date">${homeDate(p.modified)}</div></div>${homeActions(p, false)}</div></div>`,
         )
         .join('')}</div>`;
   fillThumbs();
@@ -2524,9 +2626,10 @@ function homeClick(e) {
     const id = card.dataset.id,
       p = H.list.find((x) => x.id === id);
     if (!p) return;
-    if (!ab) return openProject(id);
+    if (!ab) return e.ctrlKey || e.metaKey ? openInTab(id) : openProject(id);
     const a = ab.dataset.h;
-    if (a === 'fav') {
+    if (a === 'tab') openInTab(id);
+    else if (a === 'fav') {
       const f = favs();
       setFavs(f.includes(id) ? f.filter((x) => x !== id) : [id, ...f]);
       drawHome();
@@ -2536,6 +2639,13 @@ function homeClick(e) {
   }
 }
 $('#home').addEventListener('click', homeClick);
+/* middle-click a project = open it in a new tab */
+$('#home').addEventListener('auxclick', (e) => {
+  const c = e.button === 1 && e.target.closest('[data-id]');
+  if (!c) return;
+  e.preventDefault();
+  openInTab(c.dataset.id);
+});
 addEventListener('keydown', (e) => {
   const m = $('#hmenu');
   if (e.key === 'Escape' && m && !m.hidden) m.hidden = true;
@@ -2708,10 +2818,43 @@ function addClone(c) {
   setSel(c.nodes.map((n) => n.id));
   markDirty();
 }
+/* The clipboard is kept in projects/preferences.json (key mClip), not in the browser, and is
+   passed to the other tabs right away, so blocks can be pasted between pages, projects and tabs.
+   `clip` is only a memory fallback (used when the clipboard is too big for the file). */
+const CLIP_MAX = 6 * 1024 * 1024;
+let clipSeen = '';
+const clipHere = () => (cur ? cur.id : '') + '|' + PG.active;
+function clipWrite(c) {
+  clip = c;
+  const j = JSON.stringify(c);
+  if (j.length > CLIP_MAX) {
+    PS.removeItem('mClip'); /* never leave an older copy behind */
+    PS.flushNow();
+    return false;
+  }
+  PS.mClip = j;
+  PS.flushNow(); /* send it now, so another tab can paste immediately */
+  return true;
+}
+function clipRead() {
+  try {
+    const c = JSON.parse(PS.mClip || 'null');
+    if (
+      c &&
+      Array.isArray(c.nodes) &&
+      Array.isArray(c.links) &&
+      c.nodes.every((n) => n && typeof n === 'object' && isFinite(n.x) && isFinite(n.y))
+    )
+      return c;
+  } catch (e) {}
+  return clip;
+}
 function copy() {
   if (!sel.n.size) return;
-  clip = JSON.parse(JSON.stringify(pick()));
+  const c = { ...JSON.parse(JSON.stringify(pick())), stamp: Date.now() + '-' + uid(), src: clipHere() };
+  clipSeen = c.stamp;
   pc = 0;
+  if (!clipWrite(c)) toast(t('t_clipLocal'));
 }
 function cut() {
   if (!sel.n.size) return;
@@ -2719,10 +2862,17 @@ function cut() {
   del();
 }
 function paste() {
-  if (!need() || !clip) return;
+  const c = need() && clipRead();
+  if (!c) return;
   snapshot();
+  if (c.stamp !== clipSeen) {
+    /* new content in the clipboard: into another page / project / tab it keeps its position,
+       on the same page it lands slightly shifted so it does not hide the original */
+    clipSeen = c.stamp;
+    pc = c.src === clipHere() ? 0 : -1;
+  }
   pc++;
-  addClone(clone(clip, 30 * pc));
+  addClone(clone(c, 30 * pc));
 }
 function dup() {
   if (!need() || !sel.n.size) return;
@@ -4082,34 +4232,135 @@ function firstPageFirst(p) {
   );
   return out;
 }
-async function importOther(f) {
-  const pages = await readMap(f),
-    base = f.name.replace(/\.[^.]+$/, '') || t('untitled'),
-    safe = (s) => String(s || '').replace(BADFN, ' ').replace(/\s+/g, ' ').trim().slice(0, 60),
-    p = firstPageFirst(treesToProject(pages));
-  let name = safe(pages[0].tree.text) || safe(base) || t('untitled'),
-    r;
-  try {
-    r = await api('POST', '/projects', { name, project: p });
-  } catch (e) {
-    r = await api('POST', '/projects', { name: t('untitled'), project: p });
+/* Reads ONE file (JSON, XMind, FreeMind, OPML, Markdown, text) and returns { name, project }
+   without saving anything. */
+async function readProject(f) {
+  const safe = (x) => String(x || '').replace(BADFN, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (/\.json$/i.test(f.name)) {
+    const j = JSON.parse(await f.text()),
+      p = j.project || j;
+    if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
+    const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
+    return { name, project: firstPageFirst(p) };
   }
-  await openProject(r.id);
+  const pages = await readMap(f),
+    base = f.name.replace(/\.[^.]+$/, '') || t('untitled');
+  return {
+    name: safe(pages[0].tree.text) || safe(base) || t('untitled'),
+    project: firstPageFirst(treesToProject(pages)),
+  };
+}
+/* saves one imported map as its own project (does NOT open it) */
+async function createImported(it) {
+  try {
+    return await api('POST', '/projects', { name: it.name, project: it.project });
+  } catch (e) {
+    return await api('POST', '/projects', { name: t('untitled'), project: it.project });
+  }
+}
+/* several imported maps -> ONE project, one page per import (a file that already has pages keeps them) */
+function mergeProjects(items) {
+  const pages = [];
+  for (const { name, project: p } of items) {
+    const list = Array.isArray(p.pages) ? p.pages.filter((x) => x && typeof x === 'object') : [];
+    if (!list.length) {
+      pages.push({ name, nodes: p.nodes, links: p.links, view: p.view });
+      continue;
+    }
+    const act = list.find((x) => x.id === p.activePage) || list[0];
+    for (const x of list)
+      pages.push({
+        name: list.length > 1 ? (name + ' – ' + (x.name || '')).slice(0, 60) : name,
+        nodes: x === act ? p.nodes : x.nodes || [],
+        links: x === act ? p.links : x.links || [],
+        view: x === act ? p.view : x.view,
+      });
+  }
+  if (pages.length > PG_MAX) throw 0;
+  pages.forEach((x) => {
+    x.id = uid();
+    x.name = String(x.name || '').trim().slice(0, 60) || t('untitled');
+  });
+  const first = pages[0],
+    out = {
+      version: 1,
+      nodes: first.nodes,
+      links: first.links,
+      settings: items[0].project.settings || {},
+      pages: pages.map((x, i) =>
+        i === 0
+          ? { id: x.id, name: x.name }
+          : { id: x.id, name: x.name, nodes: x.nodes, links: x.links, view: x.view || undefined },
+      ),
+      activePage: first.id,
+    };
+  if (first.view) out.view = first.view;
+  return out;
+}
+/* 2+ files selected: separate projects, or everything in one project (one page per file) */
+function importChoiceDlg(n) {
+  return new Promise((res) => {
+    let done = false;
+    const fin = (v) => {
+      if (!done) {
+        done = true;
+        res(v);
+      }
+    };
+    modal(
+      t('d_impTitle', n),
+      `<p>${esc(t('d_impMsg', n))}</p>`,
+      [
+        { l: t('b_cancel'), f: () => fin(null) },
+        { l: t('b_impSep'), f: () => fin('sep') },
+        { l: t('b_impOne'), c: 'pri', f: () => fin('one') },
+      ],
+      false,
+      () => fin(null),
+    );
+  });
 }
 $('#file').addEventListener('change', async (e) => {
-  const f = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (!f) return;
-  try {
-    if (/\.json$/i.test(f.name)) {
-      const j = JSON.parse(await f.text()),
-        p = j.project || j;
-      if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.links)) throw 0;
-      const name = (j.metadata && j.metadata.name) || f.name.replace(/(_Mindly)?\.json$/i, '') || t('untitled');
-      const r = await api('POST', '/projects', { name, project: firstPageFirst(p) });
+  if (!files.length) return;
+  if (files.length === 1) {
+    try {
+      const r = await createImported(await readProject(files[0]));
       await openProject(r.id);
-    } else await importOther(f);
-    toast(t('t_imported'));
+      toast(t('t_imported'));
+    } catch (x) {
+      toast(t('t_importErr'), 'err');
+    }
+    return;
+  }
+  const mode = await importChoiceDlg(files.length);
+  if (!mode) return;
+  const items = [];
+  let bad = 0;
+  for (const f of files) {
+    try {
+      items.push(await readProject(f));
+    } catch (x) {
+      bad++;
+    }
+  }
+  if (!items.length) return toast(t('t_importErr'), 'err');
+  try {
+    if (mode === 'sep') {
+      /* like importing them one at a time, but none of them is opened automatically */
+      for (const it of items) await createImported(it);
+      toast(t('t_importedN', items.length));
+      if (!cur) showHome();
+    } else {
+      const project = mergeProjects(items),
+        name = await ask(t('d_new'), t('d_name'), t('imp_merged'));
+      if (name == null) return;
+      const r = await api('POST', '/projects', { name, project });
+      await openProject(r.id);
+      toast(t('t_imported'));
+    }
+    if (bad) toast(t('t_importPartial', bad, files.length), 'err');
   } catch (x) {
     toast(t('t_importErr'), 'err');
   }
@@ -4150,6 +4401,7 @@ async function showPath() {
 }
 const ACT = {
   new: newProject,
+  newTab: () => openInTab(''),
   newPage: pageAdd,
   pagePrev: () => pageStep(-1),
   pageNext: () => pageStep(1),
@@ -5340,10 +5592,40 @@ $('#nsearch').addEventListener('click', (e) => {
   if (b.dataset.ns === 'clear') searchOpen(false);
   else if (S.hits.length) searchShow(S.i + (b.dataset.ns === 'next' ? 1 : -1));
 });
+/* another tab changed theme / recent / favorites / view: follow it */
+onPrefs = () => {
+  const th = PS.mTheme === 'dark' ? 'dark' : 'light';
+  if (th !== theme) {
+    theme = th;
+    document.body.dataset.theme = theme;
+    buildUI();
+    const f = document.querySelector('.theme-fab');
+    if (f) f.textContent = theme === 'dark' ? '☾' : '☀';
+  }
+  const tp = PS.mTrackpad !== '0';
+  if (tp !== tpOn) {
+    tpOn = tp;
+    hint();
+    refreshTB();
+  }
+  const v = PS.mView === 'list' ? 'list' : 'grid';
+  if (v !== H.view) H.view = v;
+  if (!cur) drawHome();
+};
+/* the project list may have changed in another tab: refresh it when this tab is shown again */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !cur && $('#modal').hidden) showHome();
+});
 (async () => {
   $('#props').hidden = false;
   document.body.dataset.theme = theme;
   buildUI();
   buildPanel();
-  showHome();
+  await showHome();
+  /* a reload (or a tab opened with "Open in new tab") reopens the project named in the URL */
+  let id = '';
+  try {
+    id = decodeURIComponent(location.hash.slice(1));
+  } catch (e) {}
+  if (id) await openProject(id);
 })();
