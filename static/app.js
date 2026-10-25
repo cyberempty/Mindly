@@ -1145,7 +1145,19 @@ function setMmVis(v) {
   if (v && cur) renderMinimap();
   refreshTB();
 }
+/* Redraws are grouped into ONE per animation frame, and when only the view moved (pan) the map
+   itself is reused: just the small rectangle slides, so dragging stays fluid even on big maps. */
+let mmRaf = 0,
+  mmSig = '',
+  mmVp = null;
 function renderMinimap() {
+  if (mmRaf) return;
+  mmRaf = requestAnimationFrame(() => {
+    mmRaf = 0;
+    renderMinimapNow();
+  });
+}
+function renderMinimapNow() {
   if (!mmVisible() || !cur || !M.nodes.length) {
     mm.hidden = true;
     return;
@@ -1158,8 +1170,8 @@ function renderMinimap() {
   }
   /* the navigation rectangle is the visible area: leave room around the content so it stays small */
   const vr = SR(),
-    mx = (vr.width / M.view.z) * 0.75,
-    my = (vr.height / M.view.z) * 0.75,
+    mx = (vr.width / M.view.z) * 1.5,
+    my = (vr.height / M.view.z) * 1.5,
     b = { x: b0.x - mx, y: b0.y - my, w: b0.w + 2 * mx, h: b0.h + 2 * my };
   mmBBox = b;
   const W = mmsvg.clientWidth || 220,
@@ -1172,6 +1184,26 @@ function renderMinimap() {
   mmOx = (W - b.w * s) / 2;
   mmOy = (H - b.h * s) / 2;
   const toMM = (x, y) => [(x - b.x) * s + mmOx, (y - b.y) * s + mmOy];
+  const r = SR(),
+    vpx = (-M.view.x / M.view.z - b.x) * s + mmOx,
+    vpy = (-M.view.y / M.view.z - b.y) * s + mmOy,
+    vpw = (r.width / M.view.z) * s,
+    vph = (r.height / M.view.z) * s;
+  const sig = [
+    W, H, s, mmOx, mmOy, b.x, b.y,
+    M.links.map((l) => l.from + '>' + l.to).join(','),
+    M.nodes.map((n) => [n.id, n.x, n.y, n.w, n.h, n.fill, n.color, n.text, HID.has(n.id) ? 1 : 0].join(':')).join('|'),
+  ].join(';');
+  const place = () => {
+    mmVp.setAttribute('width', vpw);
+    mmVp.setAttribute('height', vph);
+    mmVp.style.transform = `translate(${vpx}px,${vpy}px)`;
+  };
+  if (sig === mmSig && mmVp && mmVp.isConnected) {
+    place(); /* only the view moved */
+    return;
+  }
+  mmSig = sig;
   let h = '';
   for (const l of M.links) {
     const a = byId(l.from),
@@ -1192,13 +1224,9 @@ function renderMinimap() {
     if (n.text && hgt >= 6)
       h += `<text class="mm-text" x="${x + w / 2}" y="${y + hgt / 2}" font-size="${fs}" fill="${esc(n.color)}">${esc(n.text)}</text>`;
   }
-  const r = SR();
-  const vpx = (-M.view.x / M.view.z - b.x) * s + mmOx;
-  const vpy = (-M.view.y / M.view.z - b.y) * s + mmOy;
-  const vpw = (r.width / M.view.z) * s;
-  const vph = (r.height / M.view.z) * s;
-  h += `<rect class="mm-vp" x="${vpx}" y="${vpy}" width="${vpw}" height="${vph}" rx="2"/>`;
+  h += `<rect class="mm-vp" x="0" y="0" width="${vpw}" height="${vph}" rx="2" style="transform:translate(${vpx}px,${vpy}px)"/>`;
   mmsvg.innerHTML = h;
+  mmVp = mmsvg.querySelector('.mm-vp');
   const ze = $('#mmzoom');
   if (ze) ze.textContent = Math.round(mmZoom * 100) + '%';
 }
@@ -1210,36 +1238,98 @@ function mmToWorld(cx, cy) {
   const s = mmFitScale * mmZoom;
   return [(vbx - mmOx) / s + mmBBox.x, (vby - mmOy) / s + mmBBox.y];
 }
-function mmCenterOn(wx, wy) {
+/* Visible area of the map, in world coordinates. */
+function mmViewRect() {
+  const r = SR();
+  return { x: -M.view.x / M.view.z, y: -M.view.y / M.view.z, w: r.width / M.view.z, h: r.height / M.view.z };
+}
+function mmSetCenter(wx, wy) {
   const r = SR();
   M.view.x = r.width / 2 - wx * M.view.z;
   M.view.y = r.height / 2 - wy * M.view.z;
+}
+function mmCenterOn(wx, wy) {
+  mmSetCenter(wx, wy);
   render();
   viewDirty();
 }
+/* While dragging, the map follows the pointer at most once per frame (fluid, no extra work). */
+let mmMoveRaf = 0,
+  mmMoveTo = null,
+  mmGlideRaf = 0;
+function mmFollow(wx, wy) {
+  mmMoveTo = [wx, wy];
+  if (mmMoveRaf) return;
+  mmMoveRaf = requestAnimationFrame(() => {
+    mmMoveRaf = 0;
+    if (!mmMoveTo) return;
+    mmSetCenter(mmMoveTo[0], mmMoveTo[1]);
+    mmMoveTo = null;
+    render();
+  });
+}
+/* Click outside the rectangle: the view glides to that point instead of jumping. */
+function mmGlide(wx, wy) {
+  cancelAnimationFrame(mmGlideRaf);
+  const v = mmViewRect(),
+    x0 = v.x + v.w / 2,
+    y0 = v.y + v.h / 2,
+    t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / 180),
+      e = 1 - Math.pow(1 - k, 3);
+    mmSetCenter(x0 + (wx - x0) * e, y0 + (wy - y0) * e);
+    render();
+    mmGlideRaf = k < 1 ? requestAnimationFrame(step) : 0;
+  };
+  mmGlideRaf = requestAnimationFrame(step);
+}
+const mmInsideVp = (pt) => {
+  const v = mmViewRect();
+  return pt[0] >= v.x && pt[0] <= v.x + v.w && pt[1] >= v.y && pt[1] <= v.y + v.h;
+};
 function mmZoomBy(f) {
   mmZoom = Math.min(8, Math.max(0.1, mmZoom * f));
   renderMinimap();
 }
+/* Grab the small rectangle and drag it anywhere: it keeps the spot you grabbed (no jump).
+   A click outside the rectangle glides the view there, and you can keep dragging from it. */
 mmsvg.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
   e.preventDefault();
   const pt = mmToWorld(e.clientX, e.clientY);
   if (!pt) return;
-  mmPanDrag = true;
-  mmCenterOn(pt[0], pt[1]);
+  cancelAnimationFrame(mmGlideRaf);
+  mmGlideRaf = 0;
+  const v = mmViewRect(),
+    inside = mmInsideVp(pt);
+  mmPanDrag = inside ? { dx: pt[0] - (v.x + v.w / 2), dy: pt[1] - (v.y + v.h / 2) } : { dx: 0, dy: 0 };
+  if (!inside) mmGlide(pt[0], pt[1]);
   mmsvg.setPointerCapture(e.pointerId);
 });
 mmsvg.addEventListener('mousedown', (e) => {
   if (e.target.dataset && e.target.dataset.c) e.preventDefault(); /* keep focus in the new block's editor */
 });
-svg.addEventListener('pointermove', (e) => {
-  if (!mmPanDrag) return;
+mmsvg.addEventListener('pointermove', (e) => {
   const pt = mmToWorld(e.clientX, e.clientY);
-  if (pt) mmCenterOn(pt[0], pt[1]);
+  if (!pt) return;
+  if (!mmPanDrag) {
+    mmsvg.style.cursor = mmInsideVp(pt) ? 'grab' : 'pointer'; /* hand over the rectangle */
+    return;
+  }
+  if (mmGlideRaf) {
+    /* the user started dragging during the glide: follow the pointer from here */
+    cancelAnimationFrame(mmGlideRaf);
+    mmGlideRaf = 0;
+    const v = mmViewRect();
+    mmPanDrag = { dx: pt[0] - (v.x + v.w / 2), dy: pt[1] - (v.y + v.h / 2) };
+  }
+  mmFollow(pt[0] - mmPanDrag.dx, pt[1] - mmPanDrag.dy);
 });
 const endMmPan = () => {
-  mmPanDrag = false;
+  if (!mmPanDrag) return;
+  mmPanDrag = null;
+  viewDirty();
 };
 mmsvg.addEventListener('pointerup', endMmPan);
 mmsvg.addEventListener('pointercancel', endMmPan);

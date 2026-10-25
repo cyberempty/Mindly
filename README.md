@@ -209,7 +209,7 @@ Applies to all selected blocks. **Block**: text, fill, text color, shape, width,
 ### Canvas
 
 - Zoom 10–400% (Ctrl+wheel, trackpad pinch, touch pinch), pan (two-finger swipe, Space+drag), fit to screen, 20 px dotted grid and snap (saved with the project), saved view position and zoom.
-- **Minimap** (off by default): click/drag to navigate, + / − zoom, click the % to reset, pin to the corner or drag it anywhere, resize from the four corners.
+- **Minimap** (off by default): grab the small rectangle and drag it freely (it stays where you grabbed it, no jump); click elsewhere and the view glides there;  + / − zoom, click the % to reset, pin to the corner or drag it anywhere, resize from the four corners. It is always translucent (the map shows through), fades in smoothly, redraws once per frame and only slides the small view rectangle while you pan, and that rectangle is kept small inside the minimap.
 
 ### Pages
 

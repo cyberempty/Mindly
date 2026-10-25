@@ -828,8 +828,11 @@ kbd {
   top: 10px;
   width: 220px;
   height: 160px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  /* always translucent: the map stays visible behind it */
+  background: color-mix(in srgb, var(--panel) 45%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 10px;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -849,8 +852,8 @@ kbd {
   align-items: center;
   gap: 2px;
   padding: 3px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 35%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   flex-shrink: 0;
   user-select: none;
 }
@@ -883,7 +886,7 @@ kbd {
   cursor: grab;
 }
 #minimap svg:active {
-  cursor: grabbing;
+  cursor: grabbing !important;
 }
 #minimap #mmzoom {
   position: absolute;
@@ -895,7 +898,7 @@ kbd {
   padding: 1px 5px;
   border-radius: 3px;
   z-index: 2;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
   user-select: none;
 }
 #minimap #mmzoom:hover {
@@ -903,15 +906,29 @@ kbd {
   background: var(--hover);
 }
 #minimap .mm-vp {
-  fill: none;
+  fill: color-mix(in srgb, var(--accent) 8%, transparent);
   stroke: var(--accent);
-  stroke-width: 1.5;
-  stroke-dasharray: 4 3;
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
   pointer-events: none;
+  }
+#minimap:not([hidden]) {
+  animation: mm-in 0.2s ease-out; /* fades in smoothly when shown */
+}
+@keyframes mm-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 #minimap .mm-node {
-  stroke: #00000026;
-  stroke-width: 0.5;
+  opacity: 0.9;
+  stroke: color-mix(in srgb, var(--muted) 75%, transparent);
+  stroke-width: 0.75;
 }
 #minimap .mm-text {
   pointer-events: none;
