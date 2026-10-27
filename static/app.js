@@ -195,6 +195,7 @@ t_layoutFree|Free mode: blocks stay where you put them
 a_resizeProp|Resize keeping proportions
 a_autofit|Fit to text
 a_reparent|Drag a block onto another to attach it
+a_sidemove|Drag a block to the right, left or below its parent to change the side of its link
 title|Title
 a_titleRC|Double right-click on the background: create the title block
 a_preview|Preview…
@@ -511,6 +512,7 @@ let renaming = false,
   band = null,
   conn = null,
   dropT = null,
+  dropSide = null /* while dragging a block: { id: parent id, s: 'r' | 'l' | 'b' } = side it will attach to */,
   lastClk = { id: '', t: 0 },
   mouse = { x: 0, y: 0 },
   onMC = null;
@@ -746,6 +748,7 @@ const SC = [
   ['g_sel', 'Shift + drag', '', 'a_band'],
   ['g_sel', 'Drag (Trackpad mode)', '', 'a_band2'],
   ['g_sel', 'Drag onto block', '', 'a_reparent'],
+  ['g_sel', 'Drag to another side', '', 'a_sidemove'],
   ['g_sel', 'Shift + resize', '', 'a_resizeProp'],
   ['g_sel', 'Alt + drag', '', 'a_moveAlone'],
   ['g_sel', 'Right-click + drag', '', 'a_msRight'],
@@ -1073,6 +1076,14 @@ function overlay() {
   const dtn = dropT && byId(dropT);
   if (dtn)
     h += `<rect class="src" x="${dtn.x - 6}" y="${dtn.y - 6}" width="${dtn.w + 12}" height="${dtn.h + 12}" rx="8" stroke-width="${2.5 / z}"/>`;
+  const dsp = dropSide && byId(dropSide.id);
+  if (dsp) {
+    const q = 7 / z,
+      th = 5 / z,
+      r = dropSide.s === 'r',
+      b = dropSide.s === 'b';
+    h += `<rect class="src" x="${b ? dsp.x : r ? dsp.x + dsp.w + q : dsp.x - q - th}" y="${b ? dsp.y + dsp.h + q : dsp.y}" width="${b ? dsp.w : th}" height="${b ? th : dsp.h}" rx="${th / 2}" style="fill:var(--accent);stroke:none"/>`;
+  }
   const f = linkFrom && byId(linkFrom);
   if (f)
     h += `<rect class="src" x="${f.x - 6}" y="${f.y - 6}" width="${f.w + 12}" height="${f.h + 12}" rx="8" stroke-width="${2 / z}"/>`;
@@ -1310,7 +1321,15 @@ mmsvg.addEventListener('pointerdown', (e) => {
 mmsvg.addEventListener('mousedown', (e) => {
   if (e.target.dataset && e.target.dataset.c) e.preventDefault(); /* keep focus in the new block's editor */
 });
-mmsvg.addEventListener('pointermove', (e) => {
+mm/* Which side of its parent a dragged block is closest to: below the parent -> 'b' (bottom branch),
+   otherwise left or right of the parent's center. */
+function dropZone(n, p) {
+  const dx = n.x + n.w / 2 - (p.x + p.w / 2),
+    dy = n.y + n.h / 2 - (p.y + p.h / 2);
+  if (n.y > p.y + p.h - 4 && dy > Math.abs(dx) * 0.8) return 'b';
+  return dx < 0 ? 'l' : 'r';
+}
+svg.addEventListener('pointermove', (e) => {
   const pt = mmToWorld(e.clientX, e.clientY);
   if (!pt) return;
   if (!mmPanDrag) {
@@ -5178,6 +5197,7 @@ svg.addEventListener('pointermove', (e) => {
           wy <= n.y + n.h,
       );
     dropT = o2 ? o2.id : null;
+    dropSide = !dropT && pn && !drag.o.has(pn.id) ? { id: pn.id, s: dropZone(dn, pn) } : null;
     render();
   } else if (drag.t === 'rs') {
     const dx = wx - drag.wx,
@@ -5261,6 +5281,7 @@ const endDrag = (e) => {
   drag = null;
   band = null;
   dropT = null;
+  dropSide = null;
   if (d.t === 'cn') {
     conn = null;
     const o = e && e.clientX != null ? hitNode(...toW(e.clientX, e.clientY), d.id) : null;
@@ -5296,11 +5317,29 @@ const endDrag = (e) => {
     delete tn.colB;
     delete n.down;
   }
+  /* dropped on empty space: the block switches to the side of its parent it was dragged to
+     (right <-> left <-> bottom) and its link follows */
+  if (d.t === 'mv' && d.moved && !dt) {
+    const n = byId(d.id),
+      l = n && M.links.find((x) => x.to === d.id),
+      p = l && byId(l.from);
+    if (n && p && !d.o.has(p.id)) {
+      const z = dropZone(n, p);
+      if (z === 'b' && !n.down) {
+        n.down = true;
+        delete p.colB;
+      } else if (z !== 'b' && n.down) {
+        delete n.down;
+        n.side = z;
+        delete p[colKey(z)];
+      }
+    }
+  }
   if (d.t === 'mv' && d.moved) {
     const n = byId(d.id),
       l = M.links.find((x) => x.to === d.id),
       p = l && byId(l.from);
-    if (n && p && !M.links.some((x) => x.to === p.id))
+    if (n && p && !n.down && !M.links.some((x) => x.to === p.id))
       n.side = n.x + n.w / 2 < p.x + p.w / 2 ? 'l' : 'r';
   }
   if (d.moved) markDirty();

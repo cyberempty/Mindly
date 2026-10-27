@@ -199,7 +199,7 @@ Mindly follows the same conventions as Figma, Miro, tldraw and Excalidraw:
 
 ### Layout
 
-- **Tidy mode** (default): the map arranges itself on both sides of the main block, parents centered on their children, recalculated after every change. Sibling order follows vertical position; dragging a child of the main block across switches its side.
+- **Tidy mode** (default): the map arranges itself on both sides of the main block, parents centered on their children, recalculated after every change. Sibling order follows vertical position; dragging a child of the main block across switches its side. **Changing a link's side:** drag any block to the right, left or below its parent (a colored bar shows the side it will attach to) and its link switches to that side: a right/left block dragged below its parent becomes a bottom branch, and a bottom block dragged to the right or left becomes a side branch again.
 - **Free mode**: blocks stay exactly where you put them.
 
 ### Properties panel (☰)
@@ -255,7 +255,9 @@ Choose **File ▸ Export** or **File ▸ Import…** (also the Import buttons on
 
 ```
 Mindly/
-├── start.bat      ← double-click to start
+├── Mindly.exe     ← double-click to start, no Python needed (standalone, ~7 MB)
+├── start.bat      ← alternative start, needs Python
+├── build_exe.bat  ← rebuilds Mindly.exe (needs Python + PyInstaller)
 ├── server.py      ← local server and API (Python standard library only)
 ├── README.md
 ├── images/        ← 4 screenshots (home and editor, light and dark)
