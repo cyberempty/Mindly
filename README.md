@@ -32,7 +32,7 @@ To quit: wait for **Saved** at the top, close the tab, then close the black serv
 2. Select the central block, press **`Tab`** and type: a linked child appears. **`Enter`** adds a sibling, **`Esc`** stops.
 3. Everything saves automatically about 1.5 seconds after each change.
 4. You can select **several files at once** when importing. With 2 or more, Mindly asks: **Separate projects** (each file becomes its own project, exactly as if imported one at a time, and none is opened automatically) or **One project, one page per file** (a single project whose pages follow the imported files; a file that already has pages keeps them).
-5. Export from **File ▸ Export** (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown). Import from **File ▸ Import…** or the Projects window.
+5. Export from **File ▸ Export** (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown). If the project has 2 or more pages, Mindly asks whether to export **all pages** or **only the map you are looking at**. Import from **File ▸ Import…** or the Projects window.
 
 ### Quick commands
 
@@ -242,6 +242,7 @@ Choose **File ▸ Export** or **File ▸ Import…** (also the Import buttons on
 - **Undo / Redo**: 300 steps per page; quick repeated edits are grouped.
 - **Save**: autosave after about 1.5 s, manual `Ctrl+S`, status *Saved / Saving… / Unsaved changes / Save error*, safe atomic writes, last save attempt when closing the tab.
 - **Export**: PDF (one page per map page, image-based), PNG (2×), SVG (vector), JSON (whole project). All exports use a white background, whatever the theme.
+- **Export scope**: with 2 or more pages, every export (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown) first asks **All pages** or **Only this map** (the current page). *Only this map* writes just that page: JSON becomes a single-page project named `PROJECT - PAGE_Mindly.json` that you can import again, and the other formats are named `PROJECT - PAGE.ext`. With a single page there is no question. *Export JSON and delete* in the Projects window always saves the whole project.
 - **Other mind map formats** (import and export), see the table below.
 - **Import**: always creates a new project and never overwrites an existing one. **Preview** shows the final map with export buttons.
 - **Theme**: light or dark.
@@ -257,7 +258,7 @@ Choose **File ▸ Export** or **File ▸ Import…** (also the Import buttons on
 Mindly/
 ├── Mindly.exe     ← double-click to start, no Python needed (standalone, ~7 MB)
 ├── start.bat      ← alternative start, needs Python
-├── build_exe.bat  ← rebuilds Mindly.exe (needs Python + PyInstaller)
+├── build_exe.bat  ← rebuilds Mindly.exe (needs Python; installs PyInstaller if missing)
 ├── server.py      ← local server and API (Python standard library only)
 ├── README.md
 ├── images/        ← 4 screenshots (home and editor, light and dark)
@@ -307,7 +308,7 @@ Open Mindly in as many browser tabs as you like (File ▸ **New browser tab**, o
 - Bold and italic apply to the whole block, not single words.
 - PDF export is an image (text not selectable); use SVG for vector output.
 - XMind, FreeMind, OPML and Markdown keep structure and text only (no colors, notes or images). The `.xmind` export has not been checked in every XMind version.
-- JSON, PDF, PNG, SVG and XMind cover every page; search, minimap and counters cover the current page; there are no links between pages (max 100 pages).
+- JSON, PDF, PNG, SVG and XMind cover every page unless you choose **Only this map** in the export window; search, minimap and counters cover the current page; there are no links between pages (max 100 pages).
 - Preferences not applied? Check that `projects/preferences.json` exists and is writable. Old version still showing? Reload with `Ctrl+F5`. Port 8765 busy? Mindly is already running: close the other window.
 
 ---

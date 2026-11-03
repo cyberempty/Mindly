@@ -274,6 +274,10 @@ d_impTitle|Import {0} files
 d_impMsg|You selected {0} files. Import them as separate projects (none is opened automatically), or put them all in one project with one page per file?
 b_impSep|Separate projects
 b_impOne|One project, one page per file
+d_expTitle|Export: whole project or one map?
+d_expMsg|This project has {0} pages. Export all of them, or only the map you are looking at ("{1}")?
+b_expAll|All {0} pages
+b_expOne|Only this map
 imp_merged|Imported maps
 t_empty|The map is empty
 t_nosel|Select a node first
@@ -378,7 +382,7 @@ pi_export|Export
 pi_whatV|A local editor for mind maps and diagrams.
 pi_whereV|Your mind maps are saved as folders inside the "projects" folder next to the program. Nothing leaves your computer.
 pi_reqV|Python 3 only, no other dependencies.
-pi_exportV|SVG, PNG, PDF, JSON backup, XMind, FreeMind, OPML and Markdown (File > Export). XMind, FreeMind, OPML and Markdown can also be imported (File > Import). SVG, PNG and PDF create one file per page, named after the page's first block. JSON files are named NAME_Mindly.json.
+pi_exportV|SVG, PNG, PDF, JSON backup, XMind, FreeMind, OPML and Markdown (File > Export). XMind, FreeMind, OPML and Markdown can also be imported (File > Import). SVG, PNG and PDF create one file per page, named after the page's first block. JSON files are named NAME_Mindly.json. When a project has 2 or more pages, every export asks whether to export all pages or only the map you are looking at.
 lic_more|Read more about the MIT license:
 a_msRight|Select multiple nodes (rectangle)
 a_license|License
@@ -3710,6 +3714,7 @@ function svgStr() {
 function preview() {
   if (!need()) return;
   if (!M.nodes.length) return toast(t('t_empty'), 'err');
+  const again = () => PG.list.length > 1 && preview();
   const box = document.createElement('div');
   box.style.cssText =
     'background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px;overflow:auto;max-height:62vh;text-align:center';
@@ -3725,21 +3730,21 @@ function preview() {
       {
         l: t('a_exportJson'),
         f: () => {
-          exportJson();
+          exportJson().then(again);
           return false;
         },
       },
       {
         l: t('a_exportSvg'),
         f: () => {
-          exportSvg();
+          exportSvg().then(again);
           return false;
         },
       },
       {
         l: t('a_exportPng'),
         f: () => {
-          exportPng();
+          exportPng().then(again);
           return false;
         },
       },
@@ -3747,7 +3752,7 @@ function preview() {
         l: t('a_exportPdf'),
         c: 'pri',
         f: () => {
-          exportPdf();
+          exportPdf().then(again);
           return false;
         },
       },
@@ -3814,9 +3819,57 @@ function downloadJson(name, project) {
     ),
   );
 }
-function exportJson() {
-  if (!need()) return;
-  downloadJson(cur.name, proj());
+/* ----- export scope: asked only when the project has 2+ pages ('all' = whole project, 'one' = current page) ----- */
+function exportScopeDlg() {
+  return new Promise((res) => {
+    let done = false;
+    const fin = (v) => {
+      if (!done) {
+        done = true;
+        res(v);
+      }
+    };
+    modal(
+      t('d_expTitle'),
+      `<p style="margin:0">${esc(t('d_expMsg', PG.list.length, pageById(PG.active).name))}</p>`,
+      [
+        { l: t('b_cancel'), f: () => fin(null) },
+        { l: t('b_expOne'), f: () => fin('one') },
+        { l: t('b_expAll', PG.list.length), c: 'pri', f: () => fin('all') },
+      ],
+      false,
+      () => fin(null),
+    );
+  });
+}
+async function exportScope() {
+  if (!need()) return null;
+  pagesSync();
+  return PG.list.length > 1 ? exportScopeDlg() : 'all';
+}
+const scopePages = (sc) => (sc === 'one' ? [pageById(PG.active)] : PG.list);
+const oneName = () => (cur.name + ' - ' + pageById(PG.active).name).slice(0, 60);
+const fnameScope = (ext, sc) =>
+  sc === 'one' ? (oneName().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') || 'mindly') + '.' + ext : fname(ext);
+/* the current page alone, as a complete single-page project (re-importable) */
+function projOne() {
+  pagesSync();
+  const pg = pageById(PG.active);
+  return {
+    version: 1,
+    nodes: pg.nodes,
+    links: pg.links,
+    settings: M.settings,
+    view: pg.view || M.view,
+    pages: [{ id: pg.id, name: pg.name }],
+    activePage: pg.id,
+  };
+}
+async function exportJson() {
+  const sc = await exportScope();
+  if (!sc) return;
+  if (sc === 'one') downloadJson(oneName(), projOne());
+  else downloadJson(cur.name, proj());
   toast(t('t_exported'));
 }
 /* ----- multi export (SVG / PNG / PDF): one file per page, named after the page's first block ----- */
@@ -3860,10 +3913,10 @@ const svgImage = (svg) =>
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   });
 async function exportPages(ext, make) {
-  if (!need()) return;
-  pagesSync();
+  const sc = await exportScope();
+  if (!sc) return;
   const items = [];
-  for (const pg of PG.list) {
+  for (const pg of scopePages(sc)) {
     const r = withPage(pg, () => {
       const b = bbox();
       return b ? { pg, svg: svgStr(), W: b.w + 80, H: b.h + 80 } : null;
@@ -4048,9 +4101,9 @@ function pageTree(pg) {
   for (const r of roots) if (r !== main && !seen.has(r.id)) tree.kids.push(build(r));
   return tree;
 }
-function docTree() {
+function docTree(sc) {
   pagesSync();
-  const a = PG.list.map((pg) => pageTree(pg)).filter(Boolean);
+  const a = scopePages(sc).map((pg) => pageTree(pg)).filter(Boolean);
   if (!a.length) return null;
   return a.length === 1 ? a[0] : { text: cur.name, kids: a };
 }
@@ -4109,9 +4162,9 @@ const xe = (s) =>
     .replace(/\n/g, '&#10;');
 const xid = () => uid() + uid() + uid();
 const XML_H = '<?xml version="1.0" encoding="UTF-8"?>\n';
-function xmindBlob() {
+function xmindBlob(sc) {
   pagesSync();
-  const pgs = PG.list.map((pg) => ({ name: pg.name, tree: pageTree(pg) })).filter((p) => p.tree);
+  const pgs = scopePages(sc).map((pg) => ({ name: pg.name, tree: pageTree(pg) })).filter((p) => p.tree);
   if (!pgs.length) return null;
   const tj = (tr) => {
       const o = { id: xid(), class: 'topic', title: tr.text };
@@ -4148,8 +4201,8 @@ function xmindBlob() {
     'application/vnd.xmind.workbook',
   );
 }
-function freemindBlob() {
-  const tr = docTree();
+function freemindBlob(sc) {
+  const tr = docTree(sc);
   if (!tr) return null;
   const nd = (n, top) =>
     `<node ID="ID_${xid()}" TEXT="${xe(n.text)}"${top && n.side === 'l' ? ' POSITION="left"' : top ? ' POSITION="right"' : ''}>${n.kids.map((k) => nd(k, false)).join('')}</node>`;
@@ -4158,8 +4211,8 @@ function freemindBlob() {
     { type: 'application/x-freemind' },
   );
 }
-function opmlBlob() {
-  const tr = docTree();
+function opmlBlob(sc) {
+  const tr = docTree(sc);
   if (!tr) return null;
   const ol = (n) => `<outline text="${xe(n.text)}">${n.kids.map(ol).join('')}</outline>`;
   return new Blob(
@@ -4167,9 +4220,9 @@ function opmlBlob() {
     { type: 'text/x-opml' },
   );
 }
-function mdBlob() {
+function mdBlob(sc) {
   pagesSync();
-  const pgs = PG.list.map((pg) => pageTree(pg)).filter(Boolean);
+  const pgs = scopePages(sc).map((pg) => pageTree(pg)).filter(Boolean);
   if (!pgs.length) return null;
   const one = (s) => String(s).replace(/\s*\n\s*/g, ' ').trim(),
     bl = (n, d, out) => {
@@ -4185,11 +4238,12 @@ function mdBlob() {
   }
   return new Blob([out.join('\n')], { type: 'text/markdown' });
 }
-const exportOther = (ext, make) => () => {
-  if (!need()) return;
-  const b = make();
+const exportOther = (ext, make) => async () => {
+  const sc = await exportScope();
+  if (!sc) return;
+  const b = make(sc);
   if (!b) return toast(t('t_empty'), 'err');
-  dl(fname(ext), b);
+  dl(fnameScope(ext, sc), b);
   toast(t('t_exported'));
 };
 const exportXmind = exportOther('xmind', xmindBlob),
