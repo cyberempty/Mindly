@@ -1,0 +1,9 @@
+{
+  "name": "Mindly",
+  "productName": "Mindly",
+  "version": "5.0.0",
+  "description": "Mindly: local mind map editor (portable desktop app)",
+  "main": "main.js",
+  "license": "MIT",
+  "private": true
+}
