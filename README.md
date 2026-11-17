@@ -54,7 +54,7 @@ To quit: wait for **Saved** at the top and close the window. Unsaved changes are
 | `Ctrl+B` / `Ctrl+I` | Bold / Italic | `Ctrl+S` | Save |
 | `Ctrl+wheel` / pinch | Zoom | `Ctrl+Shift+S` | Save as / duplicate |
 | `+` `-` `0` `1` | Zoom in / out / 100% / fit | `Shift+PageUp/Down` | Previous / next page |
-| Right button + drag / `Space`+drag | Pan | `F1` or `?` | All shortcuts |
+| Drag the background / `Space`+drag | Pan | `F1` or `?` | All shortcuts |
 
 ---
 
@@ -117,7 +117,7 @@ To quit: wait for **Saved** at the top and close the window. Unsaved changes are
 | `1` (or `Ctrl+0`) | Fit the map to the screen |
 | `Ctrl+wheel` or **pinch** on the trackpad | Zoom around the pointer |
 | `Wheel` / `Shift+wheel` or **two-finger swipe** | Scroll vertically / horizontally |
-| Right button + drag, `Space`+drag or middle button | Pan (the right button on the empty background; a right-click without moving still opens the menu) |
+| Drag the empty background (left button), `Space`+drag or middle button | Pan |
 | `Shift+PageUp` / `Shift+PageDown` | Previous / next page |
 | `F11` | Full screen |
 | `F1` or `?` | Keyboard shortcuts window |
@@ -130,7 +130,7 @@ While you type in a text field (project name, Properties panel, search) the edit
 |---|---|
 | Click a block | Select |
 | `Shift`/`Ctrl` + click | Add / remove from the selection |
-| Drag the empty background (left button) | Box selection; with `Shift`/`Ctrl` the new blocks are added to the selection |
+| **Right button** + drag on the empty background | Box selection (a right-click without moving still opens the menu); with `Shift`/`Ctrl` the new blocks are added to the selection. `Shift`/`Ctrl` + left drag on the background also adds an area |
 | Double-click a block | Edit its text |
 | Double-click the background | New block |
 | Right double-click the background | Title block |
@@ -141,7 +141,7 @@ While you type in a text field (project name, Properties panel, search) the edit
 | Drag a block onto another | Change parent (target turns orange) |
 | Drag a handle (8 around the block) | Resize; `Shift` keeps proportions |
 | Drag the ● dot | Link the block to another |
-| **Right button** + drag on the background / middle button | Pan, continuous while you hold the button |
+| Drag the background (left button) / middle button | Pan, continuous while you hold the button |
 | Wheel / `Shift`+wheel / `Ctrl`+wheel | Scroll / scroll sideways / zoom |
 
 ### Laptop trackpad and touch screen
@@ -154,10 +154,11 @@ Mindly follows the same conventions as Figma, Miro, tldraw and Excalidraw:
 | Pinch (two fingers) | Zoom around the pointer (also Safari on macOS) |
 | Two-finger tap | Context menu (right-click) |
 | Touch screen: two fingers | Pinch to zoom and pan at the same time |
-| Drag the background | Box selection (always, with or without Trackpad mode) |
-| Right button + drag, `Space`+drag or middle button | Pan |
+| Drag the background | Pan (always, with or without Trackpad mode) |
+| Right button + drag | Box selection |
+| `Space`+drag or middle button | Pan |
 
-- **Trackpad mode** (View menu or the ✥ toolbar button): it is **on** by default; you can turn it off and Mindly remembers your choice (`mTrackpad` in `projects/preferences.json`). The left button always selects (box selection) and the right button always pans, with or without this mode; the mode only changes the hints shown in the status bar.
+- **Trackpad mode** (View menu or the ✥ toolbar button): it is **on** by default; you can turn it off and Mindly remembers your choice (`mTrackpad` in `projects/preferences.json`). The left button always pans and the right button always makes a box selection, with or without this mode; the mode only changes the hints shown in the status bar.
 - The browser's own page zoom and the two-finger horizontal swipe (Back/Forward) are blocked over the map, so a pinch or a swipe never leaves the page.
 - Gestures are merged and applied once per frame, and block drags start only after ~5 px so a slightly moving tap does not move a block.
 
@@ -249,7 +250,7 @@ Choose **File ▸ Export** or **File ▸ Import…** (also the Import buttons on
 
 - **Undo / Redo**: 300 steps per page; quick repeated edits are grouped.
 - **Save**: autosave after about 1.5 s, manual `Ctrl+S`, status *Saved / Saving… / Unsaved changes / Save error*, safe atomic writes, last save attempt when closing the tab.
-- **Export**: PDF (one page per map page, image-based), PNG (2×), SVG (vector), JSON (whole project). All exports use a white background, whatever the theme.
+- **Export**: PDF (one page per map page, image-based), PNG (2×), SVG (vector), JSON (whole project). All exports use a white background, whatever the theme. With **2 or more pages**, PDF, PNG and SVG are downloaded as **a single ZIP** (`PROJECT.zip`) containing one file per map; with *Only this map* (or a single page) you get the plain file.
 - **Export scope**: with 2 or more pages, every export (PDF, PNG, SVG, JSON, XMind, FreeMind, OPML, Markdown) first asks **All pages** or **Only this map** (the current page). *Only this map* writes just that page: JSON becomes a single-page project named `PROJECT - PAGE_Mindly.json` that you can import again, and the other formats are named `PROJECT - PAGE.ext`. With a single page there is no question. *Export JSON and delete* in the Projects window always saves the whole project.
 - **Other mind map formats** (import and export), see the table below.
 - **Import**: always creates a new project and never overwrites an existing one. **Preview** shows the final map with export buttons.

@@ -177,12 +177,12 @@ a_about|Program info
 a_projects|Projects
 a_connect|Connect
 a_props|Properties
-a_pan|Pan the map (hold the right button and drag, or Space + drag)
+a_pan|Pan the map (drag the empty background with the left button, or Space + drag)
 a_zoomWheel|Zoom with mouse wheel
 a_pinch|Zoom with a trackpad pinch
 a_swipe|Scroll the map with a two-finger swipe
-a_trackpad|Trackpad mode (drag = select area)
-a_band2|Area selection (drag the empty background with the left button)
+a_trackpad|Trackpad mode (two-finger scroll and pinch hints)
+a_band2|Area selection (hold the right button and drag on the empty background)
 a_scrollWheel|Scroll the map
 a_band|Area selection
 a_moveAlone|Move only this block (without its branch)
@@ -396,10 +396,10 @@ hm_welcome2|You have no mind maps yet. Click “Create new mind map” above to 
 hm_nothing|Nothing here
 hm_nothing2|No mind maps in this section.
 hm_foot|Mindly runs locally: your mind maps are saved in the "projects" folder on this computer.
-h_select|Click: select · double-click: edit · drag the background: select area · right button + drag: pan · Ctrl+wheel: zoom · drag the ● to connect
-h_selectTp|Click: select · double-click: edit · drag the background: select area · two fingers: scroll · pinch: zoom · right button or Space + drag: pan
-t_tpOn|Trackpad mode on: drag the background to select, two-finger swipe to scroll, pinch to zoom
-t_tpOff|Trackpad mode off: drag the background to select, right button + drag to pan
+h_select|Click: select · double-click: edit · drag the background: pan · right button + drag: select area · Ctrl+wheel: zoom · drag the ● to connect
+h_selectTp|Click: select · double-click: edit · drag the background or Space + drag: pan · right button + drag: select area · two fingers: scroll · pinch: zoom
+t_tpOn|Trackpad mode on: drag the background to pan, right button + drag to select, two-finger swipe to scroll, pinch to zoom
+t_tpOff|Trackpad mode off: drag the background to pan, right button + drag to select an area
 h_link1|Connect: click the source node (Esc to cancel)
 h_link2|Now click the target node (Esc to cancel)
 ab_text|Mindly is a local mind map editor. All your data stays on your computer, in the "projects" folder.`
@@ -750,12 +750,12 @@ const SC = [
   ['g_nav', 'Ctrl + wheel', '', 'a_zoomWheel'],
   ['g_nav', 'Wheel', '', 'a_scrollWheel'],
   ['g_sel', 'Shift + drag', '', 'a_band'],
-  ['g_sel', 'Drag (background)', '', 'a_band2'],
+  ['g_sel', 'Right button + drag', '', 'a_band2'],
   ['g_sel', 'Drag onto block', '', 'a_reparent'],
   ['g_sel', 'Drag to another side', '', 'a_sidemove'],
   ['g_sel', 'Shift + resize', '', 'a_resizeProp'],
   ['g_sel', 'Alt + drag', '', 'a_moveAlone'],
-  ['g_nav', 'Right button + drag', '', 'a_pan'],
+  ['g_nav', 'Drag (background)', '', 'a_pan'],
   ['g_sel', 'Shift + click', '', 'a_msShift'],
   ['g_sel', 'Ctrl + click', '', 'a_msCtrl'],
   ['g_fmt', 'Ctrl+B', 'bold'],
@@ -3881,7 +3881,7 @@ async function exportJson() {
   else downloadJson(cur.name, proj());
   toast(t('t_exported'));
 }
-/* ----- multi export (SVG / PNG / PDF): one file per page, named after the page's first block ----- */
+/* ----- multi export (SVG / PNG / PDF): one file per page, named after the page's first block; 2+ pages -> one ZIP ----- */
 const BADFN = /[<>:"/\\|?*\x00-\x1f]/g;
 function withPage(pg, fn) {
   const sn = M.nodes,
@@ -3935,11 +3935,15 @@ async function exportPages(ext, make) {
   if (!items.length) return toast(t('t_empty'), 'err');
   const used = new Set();
   try {
-    for (let i = 0; i < items.length; i++) {
-      const blob = await make(items[i]);
-      dl(pageFileName(items[i].pg, used, ext), blob);
-      if (i < items.length - 1) await new Promise((r) => setTimeout(r, 350));
-    }
+    if (items.length > 1) {
+      /* several pages: one ZIP with every map inside (instead of many separate downloads) */
+      const files = [];
+      for (const it of items) {
+        const blob = await make(it);
+        files.push({ name: pageFileName(it.pg, used, ext), data: new Uint8Array(await blob.arrayBuffer()) });
+      }
+      dl(fname('zip'), zipStore(files, 'application/zip'));
+    } else dl(pageFileName(items[0].pg, used, ext), await make(items[0]));
     toast(t('t_exported'));
   } catch (e) {
     toast(t('e_error'), 'err');
@@ -5175,10 +5179,13 @@ svg.addEventListener('pointerdown', (e) => {
   freshNode = null; /* any click on the map ends the protection of the just-created block */
   if (!cur) return;
   if (e.button === 2) {
-    /* right button + drag on the background = pan the map (hold and move, continuous);
+    /* right button + drag on the background = area selection (hold and move);
        a plain right-click without movement still opens the context menu */
     if (e.target.closest('[data-n],[data-l],[data-h],[data-c]')) return;
-    drag = { t: 'pan', rc: true, on: false, sx: e.clientX, sy: e.clientY, vx: M.view.x, vy: M.view.y };
+    const [rx, ry] = toW(e.clientX, e.clientY),
+      rmod = e.shiftKey || e.ctrlKey || e.metaKey;
+    band = { x0: rx, y0: ry, x1: rx, y1: ry, base: rmod ? new Set(sel.n) : new Set() };
+    drag = { t: 'band', rc: true, on: false, mod: rmod, sx: e.clientX, sy: e.clientY };
     svg.setPointerCapture(e.pointerId);
     return;
   }
@@ -5243,9 +5250,11 @@ svg.addEventListener('pointerdown', (e) => {
       moved: false,
     };
   } else if (le && tool !== 'link') setSel([], le.dataset.l);
-  else {
-    if (!mod && (sel.n.size || sel.l)) setSel([]);
-    /* left button on the background = area selection */
+  else if (!mod) {
+    /* left button on the background = pan the map (a click without moving just clears the selection) */
+    drag = { t: 'pan', lc: true, on: false, sx: e.clientX, sy: e.clientY, vx: M.view.x, vy: M.view.y };
+  } else {
+    /* Shift/Ctrl + left drag on the background = add an area to the selection */
     band = { x0: wx, y0: wy, x1: wx, y1: wy, base: new Set(sel.n) };
     drag = { t: 'band' };
   }
@@ -5256,8 +5265,8 @@ svg.addEventListener('pointermove', (e) => {
   const z = M.view.z,
     [wx, wy] = toW(e.clientX, e.clientY);
   if (drag.t === 'pan') {
-    if (drag.rc && !drag.on) {
-      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return; /* still a plain right-click */
+    if ((drag.rc || drag.lc) && !drag.on) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return; /* still a plain click */
       drag.on = true;
       clearTimeout(rc.timer);
       rc.timer = null;
@@ -5359,7 +5368,7 @@ svg.addEventListener('pointermove', (e) => {
       clearTimeout(rc.timer);
       rc.timer = null;
       hidePop();
-      if (sel.n.size || sel.l) setSel([]);
+      if (!drag.mod && (sel.n.size || sel.l)) setSel([]);
     }
     band.x1 = wx;
     band.y1 = wy;
@@ -5448,7 +5457,8 @@ const endDrag = (e) => {
       n.side = n.x + n.w / 2 < p.x + p.w / 2 ? 'l' : 'r';
   }
   if (d.moved) markDirty();
-  if (d.t === 'pan' && (!d.rc || d.on)) viewDirty();
+  if (d.lc && !d.on && (sel.n.size || sel.l)) setSel([]); /* plain left click on the background */
+  if (d.t === 'pan' && ((!d.rc && !d.lc) || d.on)) viewDirty();
   render();
   buildPanel();
   if (d.t === 'mv' && !d.moved && byId(d.id)) {
